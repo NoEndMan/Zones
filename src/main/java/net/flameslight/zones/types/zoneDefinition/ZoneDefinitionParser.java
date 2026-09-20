@@ -275,7 +275,7 @@ public class ZoneDefinitionParser {
                 }
             }
         }
-        ModLogger.warn("{} field '{}' expected 'surface', 'underwater_surface' or true/false; using {}: --> {}",
+        ModLogger.warn("{} field '{}' expected 'surface', 'underwater_surface' or 'off'; using {}: --> {}",
                 LOG_PREFIX, key, fallback, raw);
         return fallback;
     }
