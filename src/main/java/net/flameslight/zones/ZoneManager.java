@@ -1,6 +1,10 @@
 package net.flameslight.zones;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.TypeAdapter;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonWriter;
 import com.google.gson.reflect.TypeToken;
 import net.flameslight.zones.config.WorldZoneConfig;
 import net.flameslight.zones.logger.ModLogger;
@@ -35,7 +39,9 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class ZoneManager {
-    public static final Gson GSON = new Gson();
+    public static final Gson GSON = new GsonBuilder()
+            .registerTypeAdapter(ResourceLocation.class, new ResourceLocationAdapter().nullSafe())
+            .create();
     public static final ThreadLocal<Boolean> COMPUTING_REAL_SURFACE = ThreadLocal.withInitial(() -> false);
 
     private static final ThreadLocal<FlattenColumnCache> FLATTEN_COLUMN_CACHE =
@@ -56,6 +62,12 @@ public final class ZoneManager {
      */
     private static final int SURFACE_SAMPLE_MASK = ~15;
     private static final int ZONE_GRID = 512;
+    /**
+     * How far past a flatten zone's radius its flattenY still applies to the preliminary surface.
+     * Vanilla samples that surface only at chunk corners (16 blocks apart) and interpolates, so a
+     * corner just outside the circle would otherwise pull the zone's edge back up to the old terrain.
+     */
+    private static final int PRELIMINARY_SURFACE_MARGIN = 16;
 
     /**
      * A zone spanning more cells than this goes in the always-scanned `oversized` list instead,
@@ -122,6 +134,23 @@ public final class ZoneManager {
         final ResourceLocation[] dims = new ResourceLocation[ZONE_LOOKUP_MASK + 1];
         final ZoneInstance[] results = new ZoneInstance[ZONE_LOOKUP_MASK + 1];
         long epoch = -1L;
+    }
+
+    /**
+     * Keeps a ResourceLocation as its plain "namespace:path" string in the zone files, the same format
+     * forcedBiome had as a String, so older worlds load unchanged. A malformed id reads back as null
+     * (no forced biome) instead of failing the whole file.
+     */
+    private static final class ResourceLocationAdapter extends TypeAdapter<ResourceLocation> {
+        @Override
+        public void write(JsonWriter out, ResourceLocation value) throws IOException {
+            out.value(value.toString());
+        }
+
+        @Override
+        public ResourceLocation read(JsonReader in) throws IOException {
+            return ResourceLocation.tryParse(in.nextString());
+        }
     }
 
     private static final class ZoneIndex {
@@ -588,7 +617,7 @@ public final class ZoneManager {
         }
 
         ZoneDefinition def = WorldZoneConfig.findDefinition(zone.zoneType);
-        if (def == null || def.biomes.isEmpty()) {
+        if (def == null) {
             return false;
         }
         String idStr = idString(structureId);
@@ -604,14 +633,18 @@ public final class ZoneManager {
             }
         }
 
-        return false;
+        // The biome forced over this spot (own or an ancestor's) is what the structure's biome check
+        // actually samples here, so it counts as allowed for every structure the zone registers.
+        if (!hasAnyForcedBiomeZone) {
+            return false;
+        }
+        ZoneInstance forcing = findForcedBiomeZone(dimension, blockX, blockZ);
+        ResourceLocation forcedKey = forcing != null ? forcing.forcedBiome : null;
+        return forcedKey != null && biome.is(forcedKey);
     }
 
-    /**
-     * ensureBiomeForTheWholeZone lookup. Only overrides biome within SURFACE_DEPTH_MARGIN of the
-     * REAL local terrain height at this column.
-     */
-    public static Optional<Holder.Reference<Biome>> getForcedBiome(ResourceLocation dimension, int blockX, int blockY, int blockZ) {
+    /** The smallest zone containing this column that forces a biome, or null. */
+    private static ZoneInstance findForcedBiomeZone(ResourceLocation dimension, int blockX, int blockZ) {
         ZoneInstance best = null;
         for (ZoneInstance zoneInstance : zonesNear(dimension, blockX, blockZ)) {
             if (zoneInstance.forcedBiome == null || !zoneInstance.contains(blockX, blockZ)) {
@@ -621,6 +654,15 @@ public final class ZoneManager {
                 best = zoneInstance;
             }
         }
+        return best;
+    }
+
+    /**
+     * ensureBiomeForTheWholeZone lookup. Only overrides biome within SURFACE_DEPTH_MARGIN of the
+     * REAL local terrain height at this column.
+     */
+    public static Optional<Holder.Reference<Biome>> getForcedBiome(ResourceLocation dimension, int blockX, int blockY, int blockZ) {
+        ZoneInstance best = findForcedBiomeZone(dimension, blockX, blockZ);
         if (best == null) {
             return Optional.empty();
         }
@@ -634,12 +676,7 @@ public final class ZoneManager {
         if (registryAccess == null) {
             return Optional.empty();
         }
-        ResourceLocation biomeId = ResourceLocation.tryParse(best.forcedBiome);
-        if (biomeId == null) {
-            return Optional.empty();
-        }
-
-        return registryAccess.registryOrThrow(Registries.BIOME).getHolder(ResourceKey.create(Registries.BIOME, biomeId));
+        return registryAccess.registryOrThrow(Registries.BIOME).getHolder(ResourceKey.create(Registries.BIOME, best.forcedBiome));
     }
 
     /**
@@ -1004,6 +1041,37 @@ public final class ZoneManager {
         return best != null ? best.flattenY : null;
     }
 
+    /**
+     * flattenY for the preliminary surface (FlattenedPreliminarySurfaceFunction). A column inside a
+     * flatten zone always uses that zone's own Y; otherwise the smallest flatten zone within
+     * PRELIMINARY_SURFACE_MARGIN of its edge. Integer.MIN_VALUE when none applies.
+     */
+    public static int getPreliminarySurfaceFlattenY(ResourceLocation dimension, int blockX, int blockZ) {
+        if (!hasAnyFlattenZone) {
+            return Integer.MIN_VALUE;
+        }
+        int exact = getFlattenTargetYCached(dimension, blockX, blockZ);
+        if (exact != Integer.MIN_VALUE) {
+            return exact;
+        }
+        ZoneInstance best = null;
+        for (ZoneInstance zoneInstance : zonesNear(dimension, blockX, blockZ)) {
+            if (zoneInstance.flattenY == null) {
+                continue;
+            }
+            long dx = blockX - zoneInstance.centerX;
+            long dz = blockZ - zoneInstance.centerZ;
+            long r = (long) zoneInstance.radius + PRELIMINARY_SURFACE_MARGIN;
+            if (dx * dx + dz * dz > r * r) {
+                continue;
+            }
+            if (best == null || zoneInstance.radius < best.radius) {
+                best = zoneInstance;
+            }
+        }
+        return best != null ? best.flattenY : Integer.MIN_VALUE;
+    }
+
     private static long cellKey(int blockX, int blockZ) {
         return (((long) Math.floorDiv(blockX, ZONE_GRID)) << 32)
                 ^ (Math.floorDiv(blockZ, ZONE_GRID) & 0xffffffffL);
@@ -1019,10 +1087,13 @@ public final class ZoneManager {
     private static void indexZones(ResourceLocation dim, List<ZoneInstance> zones) {
         ZoneIndex index = new ZoneIndex();
         for (ZoneInstance zoneInstance : zones) {
-            int minCx = Math.floorDiv(zoneInstance.centerX - zoneInstance.radius, ZONE_GRID);
-            int maxCx = Math.floorDiv(zoneInstance.centerX + zoneInstance.radius, ZONE_GRID);
-            int minCz = Math.floorDiv(zoneInstance.centerZ - zoneInstance.radius, ZONE_GRID);
-            int maxCz = Math.floorDiv(zoneInstance.centerZ + zoneInstance.radius, ZONE_GRID);
+            // Flatten zones reach PRELIMINARY_SURFACE_MARGIN past their radius (getPreliminarySurfaceFlattenY),
+            // so they must be findable from every cell that margin touches. contains() still tests the exact radius.
+            int reach = zoneInstance.radius + (zoneInstance.flattenY != null ? PRELIMINARY_SURFACE_MARGIN : 0);
+            int minCx = Math.floorDiv(zoneInstance.centerX - reach, ZONE_GRID);
+            int maxCx = Math.floorDiv(zoneInstance.centerX + reach, ZONE_GRID);
+            int minCz = Math.floorDiv(zoneInstance.centerZ - reach, ZONE_GRID);
+            int maxCz = Math.floorDiv(zoneInstance.centerZ + reach, ZONE_GRID);
             long span = (long) (maxCx - minCx + 1) * (maxCz - minCz + 1);
             if (span > MAX_CELLS_PER_ZONE) {
                 index.oversized.add(zoneInstance);

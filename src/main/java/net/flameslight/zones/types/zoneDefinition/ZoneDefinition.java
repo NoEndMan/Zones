@@ -1,6 +1,7 @@
 package net.flameslight.zones.types.zoneDefinition;
 
 import net.flameslight.zones.types.BiomeMatcher;
+import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
 
@@ -16,6 +17,8 @@ public class ZoneDefinition {
     public int minDistanceFromOtherZones = 0;
     public int minDistanceFromSpawn = 0;
     public boolean ensureBiomeForTheWholeZone = false;
+    /** Explicit biome id given as the ensureBiomeForTheWholeZone value; null = use the zone's center biome. */
+    public ResourceLocation ensureBiomeId = null;
     public FlattenMode shouldFlattenTerrain = FlattenMode.OFF;
     public boolean obeyParent = false;
     public boolean hasChildZones = false;

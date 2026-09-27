@@ -1,5 +1,6 @@
-package net.flameslight.zones;
+package net.flameslight.zones.types.NoiseChunk;
 
+import net.flameslight.zones.ZoneManager;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.KeyDispatchDataCodec;
 import net.minecraft.world.level.levelgen.DensityFunction;

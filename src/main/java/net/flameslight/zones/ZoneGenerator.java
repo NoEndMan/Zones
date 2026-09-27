@@ -8,6 +8,9 @@ import net.flameslight.zones.types.ZoneInstance;
 import net.flameslight.zones.types.zoneDefinition.ZoneDefinition;
 import net.minecraft.Util;
 import net.minecraft.core.Holder;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
@@ -68,6 +71,7 @@ final class ZoneGenerator {
         // independent of anything else consuming the level's live random source.
         RandomSource random = RandomSource.create(level.getSeed() ^ 0x5A11A5DEEDL);
         long worldSeed = level.getSeed();
+        Predicate<ZoneDefinition> forcesBiome = forcedBiomeFilter(defs, level);
 
         List<ZoneInstance> result = new ArrayList<>();
         List<CompletableFuture<Void>> pendingAsyncWork = new ArrayList<>();
@@ -81,7 +85,7 @@ final class ZoneGenerator {
                 .toList();
         if (!topLevelDefs.isEmpty()) {
             placeAllTopLevel(topLevelDefs, result, random, biomeSource, randomState, level, chunkGenerator,
-                    heightAccessor, worldSeed, pendingAsyncWork, grid);
+                    heightAccessor, worldSeed, pendingAsyncWork, grid, forcesBiome);
             for (ZoneDefinition def : topLevelDefs) {
                 resolved.add(def.id);
             }
@@ -98,7 +102,7 @@ final class ZoneGenerator {
                 ZoneDefinition def = it.next();
                 if (resolved.contains(def.parentZone)) {
                     placeNested(def, result, biomeSource, randomState, level, chunkGenerator, heightAccessor,
-                            worldSeed, pendingAsyncWork);
+                            worldSeed, pendingAsyncWork, forcesBiome);
                     resolved.add(def.id);
                     it.remove();
                     progress = true;
@@ -121,7 +125,7 @@ final class ZoneGenerator {
                                          ServerLevel level, ChunkGenerator chunkGenerator,
                                          LevelHeightAccessor heightAccessor, long worldSeed,
                                          List<CompletableFuture<Void>> pendingAsyncWork,
-                                         PlacementGrid grid) {
+                                         PlacementGrid grid, Predicate<ZoneDefinition> forcesBiome) {
         long stepDifference = WorldZoneConfig.zoneStepDifference();
         int defaultTriesPerRing = WorldZoneConfig.baseZonePlacementTries();
 
@@ -160,7 +164,8 @@ final class ZoneGenerator {
             if (state.tryIsAllowed()) {
                 int[] candidate = state.nextCandidatePoint(random);
                 success = tryPlaceCandidate(state.def, candidate[0], candidate[1], existing, biomeSource,
-                        randomState, level, chunkGenerator, heightAccessor, worldSeed, pendingAsyncWork, grid);
+                        randomState, level, chunkGenerator, heightAccessor, worldSeed, pendingAsyncWork, grid,
+                        forcesBiome);
             }
 
             if (success) {
@@ -234,7 +239,7 @@ final class ZoneGenerator {
                                              BiomeSource biomeSource, RandomState randomState, ServerLevel level,
                                              ChunkGenerator chunkGenerator, LevelHeightAccessor heightAccessor,
                                              long worldSeed, List<CompletableFuture<Void>> pendingAsyncWork,
-                                             PlacementGrid grid) {
+                                             PlacementGrid grid, Predicate<ZoneDefinition> forcesBiome) {
         if (def.minDistanceFromSpawn > 0) {
             long dx = x;
             long dz = z;
@@ -260,7 +265,7 @@ final class ZoneGenerator {
         grid.add(instance);
 
         queueInstanceDetails(instance, def, x, z, def.radius, def.shouldFlattenTerrain.isEnabled(),
-                def.ensureBiomeForTheWholeZone, chunkGenerator, randomState, heightAccessor,
+                forcesBiome.test(def), chunkGenerator, randomState, heightAccessor,
                 biomeSource, level, worldSeed, pendingAsyncWork);
         return true;
     }
@@ -273,7 +278,8 @@ final class ZoneGenerator {
                                     ChunkGenerator chunkGenerator,
                                     LevelHeightAccessor heightAccessor,
                                     long worldSeed,
-                                    List<CompletableFuture<Void>> pendingAsyncWork) {
+                                    List<CompletableFuture<Void>> pendingAsyncWork,
+                                    Predicate<ZoneDefinition> forcesBiome) {
         List<ZoneInstance> parents = existing.stream()
                 .filter(zi -> zi.zoneType.equals(def.parentZone))
                 .toList();
@@ -282,12 +288,12 @@ final class ZoneGenerator {
         // the child's own would only fight it inside the smaller circle.
         boolean flatten = def.shouldFlattenTerrain.isEnabled()
                 && !ancestorHas(def, d -> d.shouldFlattenTerrain.isEnabled());
-        boolean forceBiome = def.ensureBiomeForTheWholeZone && !ancestorHas(def, d -> d.ensureBiomeForTheWholeZone);
+        boolean forceBiome = forcesBiome.test(def) && !ancestorHas(def, forcesBiome);
 
         if (def.shouldFlattenTerrain.isEnabled() && !flatten) {
             ModLogger.warn("Zone '{}': shouldFlattenTerrain ignored! a parent zone already flattens it.", def.id);
         }
-        if (def.ensureBiomeForTheWholeZone && !forceBiome) {
+        if (forcesBiome.test(def) && !forceBiome) {
             ModLogger.warn("Zone '{}': ensureBiomeForTheWholeZone ignored! a parent zone already forces its biome.", def.id);
         }
 
@@ -339,9 +345,32 @@ final class ZoneGenerator {
                         seaLevel);
             }
             if (toForceBiome) {
-                instance.forcedBiome = resolveBiomeId(biomeSource, randomState, centerX, centerZ, level);
+                instance.forcedBiome = def.ensureBiomeId != null
+                        ? def.ensureBiomeId
+                        : resolveBiomeId(biomeSource, randomState, centerX, centerZ, level);
             }
         }, Util.backgroundExecutor()));
+    }
+
+    /**
+     * Which definitions really force a biome in this world. An explicit ensureBiomeForTheWholeZone
+     * biome id missing from the biome registry disables the option for that zone completely, so it
+     * neither forces anything nor blocks its child zones from forcing their own.
+     */
+    private static Predicate<ZoneDefinition> forcedBiomeFilter(List<ZoneDefinition> defs, ServerLevel level) {
+        Registry<Biome> biomes = level.registryAccess().registryOrThrow(Registries.BIOME);
+        Set<String> invalid = new HashSet<>();
+
+        for (ZoneDefinition def : defs) {
+            if (def.ensureBiomeForTheWholeZone && def.ensureBiomeId != null
+                    && !biomes.containsKey(def.ensureBiomeId)) {
+                ModLogger.warn("Zone '{}': ensureBiomeForTheWholeZone biome '{}' does not exist; option ignored.",
+                        def.id, def.ensureBiomeId);
+                invalid.add(def.id);
+            }
+        }
+
+        return def -> def.ensureBiomeForTheWholeZone && !invalid.contains(def.id);
     }
 
     /** Walks the parentZone chain (cycle-safe); true if any ancestor matches. */
@@ -361,10 +390,10 @@ final class ZoneGenerator {
         return false;
     }
 
-    private static String resolveBiomeId(BiomeSource biomeSource, RandomState randomState, int blockX, int blockZ, ServerLevel level) {
+    private static ResourceLocation resolveBiomeId(BiomeSource biomeSource, RandomState randomState, int blockX, int blockZ, ServerLevel level) {
         int quartY = level.getSeaLevel() >> 2;
         Holder<Biome> biome = biomeSource.getNoiseBiome(blockX >> 2, quartY, blockZ >> 2, randomState.sampler());
-        return biome.unwrapKey().map(k -> k.location().toString()).orElse(null);
+        return biome.unwrapKey().map(ResourceKey::location).orElse(null);
     }
 
     private static boolean biomeMatches(BiomeSource biomeSource, RandomState randomState, int blockX, int blockZ,

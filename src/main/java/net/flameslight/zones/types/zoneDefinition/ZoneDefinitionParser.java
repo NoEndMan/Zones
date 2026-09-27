@@ -2,6 +2,7 @@ package net.flameslight.zones.types.zoneDefinition;
 
 import net.flameslight.zones.types.BiomeMatcher;
 import net.flameslight.zones.logger.ModLogger;
+import net.minecraft.resources.ResourceLocation;
 
 import java.util.*;
 
@@ -180,8 +181,7 @@ public class ZoneDefinitionParser {
                 case "minDistanceFromOtherZones" -> def.minDistanceFromOtherZones =
                         asInt(value, key, raw, def.minDistanceFromOtherZones);
                 case "minDistanceFromSpawn" -> def.minDistanceFromSpawn = asInt(value, key, raw , def.minDistanceFromSpawn);
-                case "ensureBiomeForTheWholeZone" -> def.ensureBiomeForTheWholeZone =
-                        asBoolean(value, key, raw, def.ensureBiomeForTheWholeZone);
+                case "ensureBiomeForTheWholeZone" -> applyEnsureBiome(def, value, key, raw);
                 case "shouldFlattenTerrain" -> def.shouldFlattenTerrain =
                         asFlattenMode(value, key, raw, def.shouldFlattenTerrain);
                 case "obeyParent" -> def.obeyParent = asBoolean(value, key, raw, def.obeyParent);
@@ -256,6 +256,34 @@ public class ZoneDefinitionParser {
         }
         ModLogger.warn("{} field '{}' expected true/false but was a list/object; using default {}: --> {}", LOG_PREFIX, key, fallback, raw);
         return fallback;
+    }
+
+    /**
+     * true/false, or a biome resource id to force instead of the zone's center biome. A malformed id
+     * disables the option; whether the id actually exists is checked by ZoneGenerator once the biome
+     * registry is available.
+     */
+    private static void applyEnsureBiome(ZoneDefinition def, Object value, String key, String raw) {
+        if (!(value instanceof String s)) {
+            ModLogger.warn("{} field '{}' expected true/false or a biome id but was a list/object (ignored): --> {}",
+                    LOG_PREFIX, key, raw);
+            return;
+        }
+        if (s.equalsIgnoreCase("true") || s.equalsIgnoreCase("false")) {
+            def.ensureBiomeForTheWholeZone = Boolean.parseBoolean(s);
+            def.ensureBiomeId = null;
+            return;
+        }
+        ResourceLocation id = ResourceLocation.tryParse(s);
+        if (id == null) {
+            ModLogger.warn("{} field '{}' is neither true/false nor a valid biome id ('{}'); option disabled: --> {}",
+                    LOG_PREFIX, key, s, raw);
+            def.ensureBiomeForTheWholeZone = false;
+            def.ensureBiomeId = null;
+            return;
+        }
+        def.ensureBiomeForTheWholeZone = true;
+        def.ensureBiomeId = id;
     }
 
     /** 'surface', 'underwater_surface', 'off'. Anything else warns. */

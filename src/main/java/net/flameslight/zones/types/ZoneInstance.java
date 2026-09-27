@@ -2,6 +2,7 @@ package net.flameslight.zones.types;
 
 import net.flameslight.zones.types.spaceAround.SpaceAroundGrid;
 import net.flameslight.zones.types.spaceAround.SpaceAroundRecord;
+import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -17,7 +18,9 @@ public class ZoneInstance {
     public int centerZ;
     public int radius;
     public Integer flattenY = null;
-    public String forcedBiome = null;
+    /** Persisted as a plain "namespace:path" string by ZoneManager.GSON's ResourceLocation adapter. */
+    @Nullable
+    public ResourceLocation forcedBiome = null;
     public int generatedChunks = 0;
     public boolean spaceAroundRetired = false;
     /**

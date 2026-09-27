@@ -1,6 +1,7 @@
 package net.flameslight.zones.mixins;
 
-import net.flameslight.zones.FlattenedDensityFunction;
+import net.flameslight.zones.types.NoiseChunk.FlattenedDensityFunction;
+import net.flameslight.zones.types.NoiseChunk.FlattenedPreliminarySurfaceFunction;
 import net.minecraft.core.HolderGetter;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.NoiseRouter;
@@ -17,6 +18,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * shouldFlattenTerrain: substitutes the router's finalDensity with a wrapper right after RandomState
  * finishes building its own router, so every chunk generated from this RandomState treats flattened-zone
  * columns as flat terrain from the noise stage itself, rather than patching blocks after the fact.
+ * initialDensityWithoutJaggedness is wrapped as well: it drives the preliminary surface that gates
+ * surface rules (grass/dirt), so leaving it unflattened left cut-down zone floors as bare stone.
  *
  * `router` is assigned directly inside RandomState's private constructor (no intermediate local
  * variable of type NoiseRouter exists to @ModifyVariable), and the field is final, so this
@@ -41,7 +44,8 @@ public abstract class RandomStateMixin {
         this.router = new NoiseRouter(
                 router.barrierNoise(), router.fluidLevelFloodednessNoise(), router.fluidLevelSpreadNoise(),
                 router.lavaNoise(), router.temperature(), router.vegetation(), router.continents(),
-                router.erosion(), router.depth(), router.ridges(), router.initialDensityWithoutJaggedness(),
+                router.erosion(), router.depth(), router.ridges(),
+                new FlattenedPreliminarySurfaceFunction(router.initialDensityWithoutJaggedness(), self),
                 new FlattenedDensityFunction(router.finalDensity(), self),
                 router.veinToggle(), router.veinRidged(), router.veinGap()
         );
