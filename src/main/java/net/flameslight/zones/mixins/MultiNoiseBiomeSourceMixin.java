@@ -12,7 +12,12 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(MultiNoiseBiomeSource.class)
+/**
+ * Priority below the default 1000 so this HEAD callback is applied, and therefore runs, before
+ * TerraBlender's: TerraBlender also injects at HEAD of getNoiseBiome and always cancels with its own
+ * region biome, which would otherwise return before a zone's forced biome is ever applied.
+ */
+@Mixin(value = MultiNoiseBiomeSource.class, priority = 900)
 public abstract class MultiNoiseBiomeSourceMixin {
     @Inject(method = "getNoiseBiome*", at = @At("HEAD"), cancellable = true)
     private void structurezones$forceZoneBiome(int x, int y, int z, Climate.Sampler sampler,
