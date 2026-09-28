@@ -13,8 +13,11 @@ it was placed at.
 naturally by the game. Meaning that custom logic that changes biome or summoning the mobs by spawners/spawn eggs/commands  
 left unaffected by the mod and still work the same.
 - new zone-level option "mobs": allows to change mob spawning weights inside zones.
-- TerraBlender compatibility (tested with The Biomes We Have Gone mod)
+- TerraBlender compatibility (tested with The Biomes We Have Gone mod).
+
+### Changed
+- Various small optimizations to the whole mod code.
 
 ### Fixed
 - Fixed a bug that surface block was not placed correctly for zones configured with ensureBiomeForTheWholeZone 
-- and shouldFlattenTerrain
+and shouldFlattenTerrain.
