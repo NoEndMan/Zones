@@ -290,11 +290,18 @@ public final class WorldZoneConfig {
             Map<MobCategory, List<MobSpawnSettings.SpawnerData>> byCategory = new EnumMap<>(MobCategory.class);
             Set<EntityType<?>> types = Collections.newSetFromMap(new IdentityHashMap<>());
             for (MobSpawnSettings.SpawnerData data : effective) {
-                byCategory.computeIfAbsent(data.type.getCategory(), c -> new ArrayList<>()).add(data);
+                List<MobSpawnSettings.SpawnerData> list =
+                        byCategory.computeIfAbsent(data.type.getCategory(), c -> new ArrayList<>());
+                // weight 0: the mob is still "replaced" (its biome entry removed) inside the zone,
+                // but nothing is added back, so it can't spawn there at all.
+                if (data.getWeight().asInt() > 0) {
+                    list.add(data);
+                }
                 types.add(data.type);
             }
             MobSpawnSettings.SpawnerData[][] arrays = new MobSpawnSettings.SpawnerData[MobCategory.values().length][];
             byCategory.forEach((category, list) -> {
+                // Empty (all weight 0) still counts: the handler must look the zone up to remove them.
                 arrays[category.ordinal()] = list.toArray(new MobSpawnSettings.SpawnerData[0]);
                 zoneMobCategories[category.ordinal()] = true;
             });
@@ -318,9 +325,13 @@ public final class WorldZoneConfig {
                 1f / ((float) spacing * spacing));
     }
 
-    /** A zone's OWN 'mobs' as spawn entries; unknown and never-naturally-spawning mobs are dropped. */
+    /**
+     * A zone's OWN 'mobs' as spawn entries; unknown and never-naturally-spawning mobs are dropped.
+     * A mob listed more than once in the zone's own list keeps only its LAST entry (warned). An
+     * obeyParent child overriding a parent's entry is not a duplicate: that merge happens later.
+     */
     private static List<MobSpawnSettings.SpawnerData> resolveMobs(ZoneDefinition def) {
-        List<MobSpawnSettings.SpawnerData> result = new ArrayList<>(def.mobs.size());
+        Map<EntityType<?>, MobSpawnSettings.SpawnerData> result = new LinkedHashMap<>();
         for (ZoneDefinition.MobEntry entry : def.mobs) {
             EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(entry.id).orElse(null);
             if (type == null) {
@@ -332,9 +343,14 @@ public final class WorldZoneConfig {
                         def.id, entry.id);
                 continue;
             }
-            result.add(new MobSpawnSettings.SpawnerData(type, entry.weight, entry.minGroupSize, entry.maxGroupSize));
+            MobSpawnSettings.SpawnerData previous = result.remove(type); // re-insert so the last one keeps its place last
+            if (previous != null) {
+                ModLogger.warn("Zone '{}': mob '{}' is listed more than once in 'mobs'! Only its last entry is used.",
+                        def.id, entry.id);
+            }
+            result.put(type, new MobSpawnSettings.SpawnerData(type, entry.weight, entry.minGroupSize, entry.maxGroupSize));
         }
-        return result;
+        return new ArrayList<>(result.values());
     }
 
     private static EntityType<?>[] resolveZoneOnlyMobs(List<String> ids) {

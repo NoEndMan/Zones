@@ -375,8 +375,8 @@ public class ZoneDefinitionParser {
             }
 
             Integer weight = objFields.get("weight") instanceof String ws ? parseIntOrNull(ws) : null;
-            if (weight == null || weight < 1) {
-                ModLogger.warn("{} 'mobs' entry '{}' needs a whole-number 'weight' of 1 or more and will be ignored: --> ...{}",
+            if (weight == null || weight < 0) {
+                ModLogger.warn("{} 'mobs' entry '{}' needs a whole-number 'weight' of 0 or more and will be ignored: --> ...{}",
                         LOG_PREFIX, id, le.sourceText());
                 continue;
             }
