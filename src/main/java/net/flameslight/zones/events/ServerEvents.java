@@ -38,14 +38,18 @@ public class ServerEvents {
                 return;
             }
 
-            ZoneManager.loadOrGenerate(serverLevel);
-
             ResourceLocation dimension = serverLevel.dimension().location();
             ChunkGenerator chunkGenerator = serverLevel.getChunkSource().getGenerator();
 
+            // Registered BEFORE loadOrGenerate: zone placement samples biomes through the biome
+            // source, and must already see zoneOnlyBiomes filtered out. Every lookup still finds no
+            // zone until loadOrGenerate indexes them, so nothing else changes during generation.
             ZoneManager.registerChunkGenerator(chunkGenerator, dimension);
             ZoneManager.registerBiomeSource(chunkGenerator.getBiomeSource(), dimension);
             ZoneManager.registerRandomState(serverLevel.getChunkSource().randomState(), dimension);
+            ZoneManager.registerZoneOnlyBiomes(serverLevel, chunkGenerator.getBiomeSource());
+
+            ZoneManager.loadOrGenerate(serverLevel);
             ZoneManager.ensurePlacementIndexBuilt(serverLevel.registryAccess());
         }
     }

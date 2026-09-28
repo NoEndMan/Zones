@@ -2,6 +2,9 @@ package net.flameslight.zones.types.zoneDefinition;
 
 import net.flameslight.zones.types.BiomeMatcher;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.level.biome.MobSpawnSettings;
 
 import java.util.List;
 
@@ -28,6 +31,23 @@ public class ZoneDefinition {
     /** Set by WorldZoneConfig.build, on TOP-LEVEL definitions only: some entry anywhere in this
      *  zone tree has spaceAround > 0. False lets spaceAround skip its lock and index entirely. */
     public boolean treeHasSpaceAround = false;
+    public List<MobEntry> mobs = List.of();
+    /**
+     * Set by WorldZoneConfig.build: this zone's effective 'mobs' (own entries, plus the parent's
+     * via obeyParent) as ready-made spawn entries per category, empty if it has none. The same
+     * instances are handed to every spawn attempt, which vanilla's re-check (canSpawnMobAt) needs.
+     */
+    public MobSpawnSettings.SpawnerData[][] zoneSpawns = new MobSpawnSettings.SpawnerData[MobCategory.values().length][];
+    /**
+     * Entity types in zoneSpawns: their biome entries are replaced inside this zone. A plain array:
+     * a handful of entries compared by identity beats hashing through a Set on the spawn hot path.
+     */
+    public EntityType<?>[] zoneSpawnTypes = new EntityType<?>[0];
+
+    /** This zone's entries for a category (indexed by MobCategory.ordinal()), or null if none. */
+    public MobSpawnSettings.SpawnerData[] zoneSpawnsFor(MobCategory category) {
+        return zoneSpawns[category.ordinal()];
+    }
 
     public StructureEntry findStructure(String structureId) {
         for (StructureEntry entry : structures) {
@@ -47,5 +67,12 @@ public class ZoneDefinition {
         public int spreadDistance = 0;
         public boolean blockLeakingOutsideZone = false;
         public boolean blockLeakingIntoNestedZones = false;
+    }
+
+    public static class MobEntry {
+        public ResourceLocation id;
+        public int weight;
+        public int minGroupSize = 1;
+        public int maxGroupSize = 1;
     }
 }

@@ -43,6 +43,11 @@ public final class BiomeMatcher {
         return new BiomeMatcher(id, null);
     }
 
+    /** The exact biome id, or null for a tag matcher. */
+    public ResourceLocation exactId() {
+        return exactId;
+    }
+
     public boolean matches(Holder<Biome> biome) {
         if (tag != null) {
             return biome.is(tag);

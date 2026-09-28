@@ -7,7 +7,12 @@ import net.flameslight.zones.Zones;
 import net.flameslight.zones.logger.ModLogger;
 import net.flameslight.zones.types.zoneDefinition.ZoneDefinition;
 import net.flameslight.zones.types.zoneDefinition.ZoneDefinitionParser;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.level.biome.MobSpawnSettings;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.level.storage.ServerLevelData;
 
@@ -30,10 +35,12 @@ import java.util.*;
 public final class WorldZoneConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String FILE_NAME = "zone-config.json";
-    private static final int FORMAT_VERSION = 1;
+    /** 2: adds zoneOnlyBiomes and zoneOnlyMobs. Older files lack them, which reads as empty. */
+    private static final int FORMAT_VERSION = 2;
 
     private static final Snapshot EMPTY = new Snapshot(
-            List.of(), Map.of(), Set.of(), List.of(),
+            List.of(), Map.of(), Set.of(), List.of(), List.of(),
+            new EntityType<?>[0], new boolean[MobCategory.values().length], false,
             CommonConfig.DEFAULT_BASE_ZONE_PLACEMENT_TRIES,
             CommonConfig.DEFAULT_ZONE_STEP_DIFFERENCE,
             1f / ((float) CommonConfig.DEFAULT_STRUCTURE_DENSITY_SPACING
@@ -48,6 +55,12 @@ public final class WorldZoneConfig {
                            Map<String, ZoneDefinition> byId,
                            Set<String> zoneOnlyStructures,
                            List<String> spawnWhitelist,
+                           List<ResourceLocation> zoneOnlyBiomes,
+                           EntityType<?>[] zoneOnlyMobs,
+                           /* indexed by MobCategory.ordinal(): does any zone list a mob of it */
+                           boolean[] zoneMobCategories,
+                           /* zoneOnlyMobs or any zone 'mobs' at all: false = spawn handler exits at once */
+                           boolean spawnRulesActive,
                            int baseZonePlacementTries,
                            int zoneStepDifference,
                            float densityBaseChance) {}
@@ -132,6 +145,25 @@ public final class WorldZoneConfig {
         return ACTIVE.spawnWhitelist();
     }
 
+    /** Parsed (not registry-checked) zoneOnlyBiomes ids; resolved per dimension at level load. */
+    public static List<ResourceLocation> getZoneOnlyBiomes() {
+        return ACTIVE.zoneOnlyBiomes();
+    }
+
+    /** Resolved zoneOnlyMobs entity types; a few entries, compared by identity. Never modify. */
+    public static EntityType<?>[] getZoneOnlyMobs() {
+        return ACTIVE.zoneOnlyMobs();
+    }
+
+    /** Whether any zone's 'mobs' has an entry of this category. */
+    public static boolean hasZoneMobsIn(MobCategory category) {
+        return ACTIVE.zoneMobCategories()[category.ordinal()];
+    }
+
+    public static boolean isSpawnRulesActive() {
+        return ACTIVE.spawnRulesActive();
+    }
+
     public static int baseZonePlacementTries() {
         return ACTIVE.baseZonePlacementTries();
     }
@@ -169,6 +201,8 @@ public final class WorldZoneConfig {
         stored.structureDensitySpacing = CommonConfig.STRUCTURE_DENSITY_SPACING.get();
         stored.zoneOnlyStructures = new ArrayList<>(CommonConfig.ZONE_ONLY_STRUCTURES.get());
         stored.zoneSpawnWhitelist = new ArrayList<>(CommonConfig.ZONE_SPAWN_WHITELIST.get());
+        stored.zoneOnlyBiomes = new ArrayList<>(CommonConfig.ZONE_ONLY_BIOMES.get());
+        stored.zoneOnlyMobs = new ArrayList<>(CommonConfig.ZONE_ONLY_MOBS.get());
         stored.zoneDefinitions = ZoneDefinitionFiles.readAll();
         return stored;
     }
@@ -228,15 +262,111 @@ public final class WorldZoneConfig {
             }
         }
 
+        // Pass 3: mobs. Entity types are a built-in registry, so everything resolves right here,
+        // once, before any chunk or spawn needs it.
+        Map<String, List<MobSpawnSettings.SpawnerData>> ownSpawns = new HashMap<>();
+        for (ZoneDefinition def : defs) {
+            ownSpawns.put(def.id, resolveMobs(def));
+        }
+        boolean[] zoneMobCategories = new boolean[MobCategory.values().length];
+        boolean anyZoneMobs = false;
+        for (ZoneDefinition def : defs) {
+            List<MobSpawnSettings.SpawnerData> effective = new ArrayList<>(ownSpawns.get(def.id));
+            if (def.obeyParent && def.parentZone != null && ownSpawns.containsKey(def.parentZone)) {
+                Set<EntityType<?>> own = Collections.newSetFromMap(new IdentityHashMap<>());
+                for (MobSpawnSettings.SpawnerData data : effective) {
+                    own.add(data.type);
+                }
+                for (MobSpawnSettings.SpawnerData data : ownSpawns.get(def.parentZone)) {
+                    if (!own.contains(data.type)) {
+                        effective.add(data);
+                    }
+                }
+            }
+            if (effective.isEmpty()) {
+                continue;
+            }
+            anyZoneMobs = true;
+            Map<MobCategory, List<MobSpawnSettings.SpawnerData>> byCategory = new EnumMap<>(MobCategory.class);
+            Set<EntityType<?>> types = Collections.newSetFromMap(new IdentityHashMap<>());
+            for (MobSpawnSettings.SpawnerData data : effective) {
+                byCategory.computeIfAbsent(data.type.getCategory(), c -> new ArrayList<>()).add(data);
+                types.add(data.type);
+            }
+            MobSpawnSettings.SpawnerData[][] arrays = new MobSpawnSettings.SpawnerData[MobCategory.values().length][];
+            byCategory.forEach((category, list) -> {
+                arrays[category.ordinal()] = list.toArray(new MobSpawnSettings.SpawnerData[0]);
+                zoneMobCategories[category.ordinal()] = true;
+            });
+            def.zoneSpawns = arrays;
+            def.zoneSpawnTypes = types.toArray(new EntityType<?>[0]);
+        }
+        EntityType<?>[] zoneOnlyMobs = resolveZoneOnlyMobs(stored.zoneOnlyMobs);
+
         int spacing = Math.min(256, Math.max(4, stored.structureDensitySpacing));
         return new Snapshot(
                 List.copyOf(defs),
                 Map.copyOf(byId),
                 stored.zoneOnlyStructures == null ? Set.of() : Set.copyOf(stored.zoneOnlyStructures),
                 stored.zoneSpawnWhitelist == null ? List.of() : List.copyOf(stored.zoneSpawnWhitelist),
+                parseIds(stored.zoneOnlyBiomes, "zoneOnlyBiomes"),
+                zoneOnlyMobs,
+                zoneMobCategories,
+                anyZoneMobs || zoneOnlyMobs.length > 0,
                 Math.max(1, stored.baseZonePlacementTries),
                 Math.max(1, stored.zoneStepDifference),
                 1f / ((float) spacing * spacing));
+    }
+
+    /** A zone's OWN 'mobs' as spawn entries; unknown and never-naturally-spawning mobs are dropped. */
+    private static List<MobSpawnSettings.SpawnerData> resolveMobs(ZoneDefinition def) {
+        List<MobSpawnSettings.SpawnerData> result = new ArrayList<>(def.mobs.size());
+        for (ZoneDefinition.MobEntry entry : def.mobs) {
+            EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(entry.id).orElse(null);
+            if (type == null) {
+                ModLogger.warn("Zone '{}': 'mobs' entry '{}' is not a known mob; ignored.", def.id, entry.id);
+                continue;
+            }
+            if (type.getCategory() == MobCategory.MISC) {
+                ModLogger.warn("Zone '{}': 'mobs' entry '{}' never spawns naturally (misc category); ignored.",
+                        def.id, entry.id);
+                continue;
+            }
+            result.add(new MobSpawnSettings.SpawnerData(type, entry.weight, entry.minGroupSize, entry.maxGroupSize));
+        }
+        return result;
+    }
+
+    private static EntityType<?>[] resolveZoneOnlyMobs(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return new EntityType<?>[0];
+        }
+        Set<EntityType<?>> types = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (ResourceLocation id : parseIds(ids, "zoneOnlyMobs")) {
+            EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
+            if (type == null) {
+                ModLogger.warn("zoneOnlyMobs: '{}' is not a known mob; ignored.", id);
+            } else {
+                types.add(type);
+            }
+        }
+        return types.toArray(new EntityType<?>[0]);
+    }
+
+    private static List<ResourceLocation> parseIds(List<String> ids, String option) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<ResourceLocation> result = new ArrayList<>(ids.size());
+        for (String raw : ids) {
+            ResourceLocation id = raw == null ? null : ResourceLocation.tryParse(raw.trim());
+            if (id == null) {
+                ModLogger.warn("{}: '{}' is not a valid id; ignored.", option, raw);
+            } else {
+                result.add(id);
+            }
+        }
+        return List.copyOf(result);
     }
 
     /** Walks the parentZone chain to the top-level zone (cycle-safe; stops at a missing parent). */
@@ -297,6 +427,8 @@ public final class WorldZoneConfig {
         int structureDensitySpacing;
         List<String> zoneOnlyStructures;
         List<String> zoneSpawnWhitelist;
+        List<String> zoneOnlyBiomes;
+        List<String> zoneOnlyMobs;
         List<String> zoneDefinitions;
     }
 }

@@ -6,14 +6,18 @@ import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 import com.google.gson.reflect.TypeToken;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.flameslight.zones.config.WorldZoneConfig;
 import net.flameslight.zones.logger.ModLogger;
 import net.flameslight.zones.types.BiomeMatcher;
 import net.flameslight.zones.types.ChunkInZoneLoadingStatus;
 import net.flameslight.zones.types.ZoneInstance;
+import net.flameslight.zones.types.biome.ZoneBiomeSourceContext;
+import net.flameslight.zones.types.biome.ZoneBiomeSourceHolder;
 import net.flameslight.zones.types.zoneDefinition.ZoneDefinition;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -28,6 +32,7 @@ import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.structure.StructureSet;
 import net.minecraft.world.level.levelgen.structure.placement.StructurePlacement;
 import net.minecraft.world.level.storage.LevelResource;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -104,8 +109,10 @@ public final class ZoneManager {
     private static volatile boolean hasAnyGuaranteePlacement = false;
     private static volatile boolean hasAnyReclaimableZoneData = false;
 
-    // Copy-on-write identity maps: read lock-free on every worldgen thread, replaced wholesale on
-// the rare write (level load). Entries are dropped in unloadDimension and resetSessionState.
+    /*
+        Copy-on-write identity maps: read lock-free on every worldgen thread, replaced wholesale on
+        the rare write (level load). Entries are dropped in unloadDimension and resetSessionState.
+    */
     private static volatile Map<ChunkGenerator, ResourceLocation> DIMENSION_BY_GENERATOR = Collections.emptyMap();
     private static volatile Map<BiomeSource, ResourceLocation> DIMENSION_BY_BIOME_SOURCE = Collections.emptyMap();
     private static volatile Map<RandomState, ResourceLocation> DIMENSION_BY_RANDOM_STATE = Collections.emptyMap();
@@ -154,7 +161,8 @@ public final class ZoneManager {
     }
 
     private static final class ZoneIndex {
-        final Map<Long, List<ZoneInstance>> cells = new HashMap<>();
+        // Primitive long keys: every biome/zone lookup hits this, and a boxed Long per call adds up.
+        final Long2ObjectOpenHashMap<List<ZoneInstance>> cells = new Long2ObjectOpenHashMap<>();
         final List<ZoneInstance> oversized = new ArrayList<>();
     }
 
@@ -168,6 +176,12 @@ public final class ZoneManager {
         private ResourceLocation chunkDim;
         private long chunkKey = Long.MIN_VALUE;
         private boolean chunkHasFlatten;
+
+        // Last surface sample handed out by computeSurfaceHeight. The biome source asks for the same
+        // chunk's sample many times in a row, so this skips the shared, locked cache almost always.
+        private ResourceLocation surfaceDim;
+        private long surfaceKey = Long.MIN_VALUE;
+        private int surfaceValue;
     }
 
     // ---- Loading / generation ----
@@ -215,11 +229,32 @@ public final class ZoneManager {
         }
 
         List<ZoneInstance> stored = List.copyOf(instances);
+        resolveForcedBiomeHolders(level, stored);
 
         ZONES_BY_DIMENSION.put(dimId, stored);
         indexZones(dimId, stored);
         LocatePositionsSavingHandler.openDimension(dimId, dataDir(level));
         recomputeDerivedState();
+    }
+
+    /**
+     * Resolves every instance's forcedBiome once per load, so the biome hot path returns a cached
+     * holder instead of creating a ResourceKey and hitting the registry on every lookup.
+     */
+    private static void resolveForcedBiomeHolders(ServerLevel level, List<ZoneInstance> instances) {
+        Registry<Biome> biomes = level.registryAccess().registryOrThrow(Registries.BIOME);
+        for (ZoneInstance zoneInstance : instances) {
+            if (zoneInstance.forcedBiome == null) {
+                continue;
+            }
+            zoneInstance.forcedBiomeHolder = biomes
+                    .getHolder(ResourceKey.create(Registries.BIOME, zoneInstance.forcedBiome))
+                    .orElse(null);
+            if (zoneInstance.forcedBiomeHolder == null) {
+                ModLogger.warn("Zone '{}' at [{}, {}] forces biome '{}', which no longer exists; not forcing it.",
+                        zoneInstance.zoneType, zoneInstance.centerX, zoneInstance.centerZ, zoneInstance.forcedBiome);
+            }
+        }
     }
 
     public static Optional<ZoneInstance> resolveConfiguredSpawnZone(ResourceLocation dimension) {
@@ -251,6 +286,9 @@ public final class ZoneManager {
 
     public static synchronized void registerBiomeSource(BiomeSource biomeSource, ResourceLocation dimension) {
         DIMENSION_BY_BIOME_SOURCE = withEntry(DIMENSION_BY_BIOME_SOURCE, biomeSource, dimension);
+        if (biomeSource instanceof ZoneBiomeSourceHolder holder) {
+            holder.structurezones$setContext(new ZoneBiomeSourceContext(dimension, null));
+        }
     }
 
     public static synchronized void registerRandomState(RandomState randomState, ResourceLocation dimension) {
@@ -261,8 +299,56 @@ public final class ZoneManager {
         return DIMENSION_BY_RANDOM_STATE.get(randomState);
     }
 
+    /**
+     * zoneOnlyBiomes: builds this dimension's filter once, at level load and before zones are
+     * generated, so zone placement already sees the filtered biomes.
+     */
+    public static synchronized void registerZoneOnlyBiomes(ServerLevel level, BiomeSource biomeSource) {
+        ResourceLocation dimension = level.dimension().location();
+        ZoneOnlyBiomeFilter filter = ZoneOnlyBiomeFilter.create(biomeSource,
+                level.registryAccess().registryOrThrow(Registries.BIOME), WorldZoneConfig.getZoneOnlyBiomes(), dimension);
+        if (filter == null) {
+            return;
+        }
+        if (biomeSource instanceof ZoneBiomeSourceHolder holder) {
+            holder.structurezones$setContext(new ZoneBiomeSourceContext(dimension, filter));
+        }
+
+        String dimKey = dimension.toString();
+        for (ZoneDefinition def : WorldZoneConfig.getParsedDefinitions()) {
+            if (!dimKey.equals(def.dimension)
+                    || def.biomes.isEmpty()
+                    || (def.parentZone != null && !def.parentZone.isEmpty())) {
+                continue;
+            }
+            boolean onlyZoneOnly = true;
+            for (BiomeMatcher matcher : def.biomes) {
+                ResourceLocation exact = matcher.exactId();
+                Holder<Biome> holder = exact == null ? null : level.registryAccess().registryOrThrow(Registries.BIOME)
+                        .getHolder(ResourceKey.create(Registries.BIOME, exact)).orElse(null);
+                if (holder == null || !filter.isZoneOnly(holder)) {
+                    onlyZoneOnly = false;
+                    break;
+                }
+            }
+            if (onlyZoneOnly) {
+                ModLogger.warn("Zone '{}': every biome in its 'biomes' list is in zoneOnlyBiomes, so none of them "
+                        + "generates naturally and this zone can never be placed.", def.id);
+            }
+        }
+    }
+
     public static ResourceLocation getDimensionForBiomeSource(BiomeSource biomeSource) {
         return DIMENSION_BY_BIOME_SOURCE.get(biomeSource);
+    }
+
+    /** Detaches our per-source context so a closed world's zones never answer for a new one. */
+    private static void clearBiomeSourceContexts(Collection<BiomeSource> sources) {
+        for (BiomeSource source : sources) {
+            if (source instanceof ZoneBiomeSourceHolder holder) {
+                holder.structurezones$setContext(null);
+            }
+        }
     }
 
     public static void ensurePlacementIndexBuilt(RegistryAccess registryAccess) {
@@ -346,6 +432,7 @@ public final class ZoneManager {
         SURFACE_HEIGHT_CACHE.clear();
         ID_STRING_CACHE = Collections.emptyMap();
         DIMENSION_BY_GENERATOR = Collections.emptyMap();
+        clearBiomeSourceContexts(DIMENSION_BY_BIOME_SOURCE.keySet());
         DIMENSION_BY_BIOME_SOURCE = Collections.emptyMap();
         PLACEMENT_TO_STRUCTURES = Collections.emptyMap();
         DIMENSION_BY_RANDOM_STATE = Collections.emptyMap();
@@ -639,15 +726,14 @@ public final class ZoneManager {
             return false;
         }
         ZoneInstance forcing = findForcedBiomeZone(dimension, blockX, blockZ);
-        ResourceLocation forcedKey = forcing != null ? forcing.forcedBiome : null;
-        return forcedKey != null && biome.is(forcedKey);
+        return forcing != null && forcing.forcedBiomeHolder == biome;
     }
 
-    /** The smallest zone containing this column that forces a biome, or null. */
+    /** The smallest zone containing this column that forces a (resolvable) biome, or null. */
     private static ZoneInstance findForcedBiomeZone(ResourceLocation dimension, int blockX, int blockZ) {
         ZoneInstance best = null;
         for (ZoneInstance zoneInstance : zonesNear(dimension, blockX, blockZ)) {
-            if (zoneInstance.forcedBiome == null || !zoneInstance.contains(blockX, blockZ)) {
+            if (zoneInstance.forcedBiomeHolder == null || !zoneInstance.contains(blockX, blockZ)) {
                 continue;
             }
             if (best == null || zoneInstance.radius < best.radius) {
@@ -661,22 +747,18 @@ public final class ZoneManager {
      * ensureBiomeForTheWholeZone lookup. Only overrides biome within SURFACE_DEPTH_MARGIN of the
      * REAL local terrain height at this column.
      */
-    public static Optional<Holder.Reference<Biome>> getForcedBiome(ResourceLocation dimension, int blockX, int blockY, int blockZ) {
+    @Nullable
+    public static Holder<Biome> getForcedBiome(ResourceLocation dimension, int blockX, int blockY, int blockZ) {
         ZoneInstance best = findForcedBiomeZone(dimension, blockX, blockZ);
         if (best == null) {
-            return Optional.empty();
+            return null;
         }
 
         Integer surfaceY = resolveSurfaceY(dimension, blockX, blockZ);
         if (surfaceY == null || blockY < surfaceY - SURFACE_DEPTH_MARGIN) {
-            return Optional.empty(); // underground: leave whatever the natural biome noise assigns
+            return null; // underground: leave whatever the natural biome noise assigns
         }
-
-        RegistryAccess registryAccess = CACHED_REGISTRY_ACCESS;
-        if (registryAccess == null) {
-            return Optional.empty();
-        }
-        return registryAccess.registryOrThrow(Registries.BIOME).getHolder(ResourceKey.create(Registries.BIOME, best.forcedBiome));
+        return best.forcedBiomeHolder;
     }
 
     /**
@@ -728,10 +810,20 @@ public final class ZoneManager {
         // the chunk centre stands in for the chunk.
         int sampleX = (blockX & SURFACE_SAMPLE_MASK) + 8;
         int sampleZ = (blockZ & SURFACE_SAMPLE_MASK) + 8;
-        Map<Long, Integer> cache = surfaceCacheFor(dimension);
         long key = (((long) sampleX) << 32) ^ (sampleZ & 0xffffffffL);
+        FlattenColumnCache local = FLATTEN_COLUMN_CACHE.get();
+        long epoch = zoneLookupEpoch;
+        if (local.epoch != epoch) {
+            resetFlattenCache(local, epoch);
+        }
+        if (local.surfaceKey == key && dimension.equals(local.surfaceDim)) {
+            return local.surfaceValue;
+        }
+
+        Map<Long, Integer> cache = surfaceCacheFor(dimension);
         Integer cached = cache.get(key);
         if (cached != null) {
+            rememberSurface(local, dimension, key, cached);
             return cached;
         }
         ChunkGenerator generator = level.getChunkSource().getGenerator();
@@ -744,7 +836,14 @@ public final class ZoneManager {
             COMPUTING_REAL_SURFACE.set(false);
         }
         cache.put(key, height);
+        rememberSurface(local, dimension, key, height);
         return height;
+    }
+
+    private static void rememberSurface(FlattenColumnCache local, ResourceLocation dimension, long key, int value) {
+        local.surfaceDim = dimension;
+        local.surfaceKey = key;
+        local.surfaceValue = value;
     }
 
     private static Map<Long, Integer> surfaceCacheFor(ResourceLocation dimKey) {
@@ -905,6 +1004,13 @@ public final class ZoneManager {
         SURFACE_HEIGHT_CACHE.remove(dimension);
         FRESHLY_GENERATED.remove(dimension);
         DIMENSION_BY_GENERATOR = withoutDimension(DIMENSION_BY_GENERATOR, dimension);
+        List<BiomeSource> sources = new ArrayList<>();
+        DIMENSION_BY_BIOME_SOURCE.forEach((source, dim) -> {
+            if (dim.equals(dimension)) {
+                sources.add(source);
+            }
+        });
+        clearBiomeSourceContexts(sources);
         DIMENSION_BY_BIOME_SOURCE = withoutDimension(DIMENSION_BY_BIOME_SOURCE, dimension);
         DIMENSION_BY_RANDOM_STATE = withoutDimension(DIMENSION_BY_RANDOM_STATE, dimension);
         zoneLookupEpoch++;
@@ -1192,6 +1298,8 @@ public final class ZoneManager {
         java.util.Arrays.fill(c.dims, null);
         c.chunkKey = Long.MIN_VALUE;
         c.chunkDim = null;
+        c.surfaceKey = Long.MIN_VALUE;
+        c.surfaceDim = null;
     }
 
     /**
@@ -1207,19 +1315,24 @@ public final class ZoneManager {
         return entry != null && (entry.maxCount > 0 || entry.guaranteePlacement);
     }
 
+    /**
+     * Copy-on-write: the returned map is NEVER mutated after it is published to its volatile field,
+     * so it is handed out bare (no unmodifiable wrapper) to keep the hot-path reads one call deep.
+     */
     private static <K> Map<K, ResourceLocation> withEntry(Map<K, ResourceLocation> map, K key, ResourceLocation value) {
         Map<K, ResourceLocation> copy = new IdentityHashMap<>(map);
         copy.put(key, value);
-        return Collections.unmodifiableMap(copy);
+        return copy;
     }
 
+    /** Copy-on-write, same never-mutated-after-publish contract as withEntry. */
     private static <K> Map<K, ResourceLocation> withoutDimension(Map<K, ResourceLocation> map, ResourceLocation dimension) {
         if (!map.containsValue(dimension)) {
             return map;
         }
         Map<K, ResourceLocation> copy = new IdentityHashMap<>(map);
         copy.values().removeIf(dimension::equals);
-        return Collections.unmodifiableMap(copy);
+        return copy;
     }
 
     private static int zoneLookupSlot(int blockX, int blockZ, ResourceLocation dimension) {

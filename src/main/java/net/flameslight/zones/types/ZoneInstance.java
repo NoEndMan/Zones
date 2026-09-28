@@ -2,7 +2,9 @@ package net.flameslight.zones.types;
 
 import net.flameslight.zones.types.spaceAround.SpaceAroundGrid;
 import net.flameslight.zones.types.spaceAround.SpaceAroundRecord;
+import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.biome.Biome;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -21,6 +23,12 @@ public class ZoneInstance {
     /** Persisted as a plain "namespace:path" string by ZoneManager.GSON's ResourceLocation adapter. */
     @Nullable
     public ResourceLocation forcedBiome = null;
+    /**
+     * forcedBiome resolved against the running world's biome registry, once per load by
+     * ZoneManager.loadOrGenerate. Null if the zone forces nothing or the biome is missing.
+     */
+    @Nullable
+    public transient Holder<Biome> forcedBiomeHolder = null;
     public int generatedChunks = 0;
     public boolean spaceAroundRetired = false;
     /**

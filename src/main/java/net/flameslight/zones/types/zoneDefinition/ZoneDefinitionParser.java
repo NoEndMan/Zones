@@ -185,6 +185,14 @@ public class ZoneDefinitionParser {
                 case "shouldFlattenTerrain" -> def.shouldFlattenTerrain =
                         asFlattenMode(value, key, raw, def.shouldFlattenTerrain);
                 case "obeyParent" -> def.obeyParent = asBoolean(value, key, raw, def.obeyParent);
+                case "mobs" -> {
+                    if (value instanceof List<?> list) {
+                        def.mobs = asMobList(list);
+                    } else {
+                        ModLogger.warn("{} field 'mobs' expected a list of "
+                                + "{{id:...,weight:...}} objects (ignored): --> {}", LOG_PREFIX, raw);
+                    }
+                }
                 case "structures" -> {
                     if (value instanceof List<?> list) {
                         def.structures = asStructureList(list);
@@ -346,6 +354,72 @@ public class ZoneDefinitionParser {
         ModLogger.warn("{} 'structures' entry '{}' field '{}' expected true/false; using false: --> ...{}",
                 LOG_PREFIX, structureId, key, sourceText);
         return false;
+    }
+
+    /** id and weight are required; groupSize [min, max] is optional and falls back to [1, 1]. */
+    private static List<ZoneDefinition.MobEntry> asMobList(List<?> list) {
+        List<ZoneDefinition.MobEntry> result = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++) {
+            ListElement le = (ListElement) list.get(i);
+            if (!(le.value() instanceof Map<?, ?> objFields)) {
+                ModLogger.warn("{} 'mobs' entry #{} should be a {{id:...,weight:...}} object (ignored): --> ...{}",
+                        LOG_PREFIX, i, le.sourceText());
+                continue;
+            }
+
+            ResourceLocation id = objFields.get("id") instanceof String s ? ResourceLocation.tryParse(s) : null;
+            if (id == null) {
+                ModLogger.warn("{} 'mobs' entry #{} has a missing or invalid 'id' and will be ignored: --> ...{}",
+                        LOG_PREFIX, i, le.sourceText());
+                continue;
+            }
+
+            Integer weight = objFields.get("weight") instanceof String ws ? parseIntOrNull(ws) : null;
+            if (weight == null || weight < 1) {
+                ModLogger.warn("{} 'mobs' entry '{}' needs a whole-number 'weight' of 1 or more and will be ignored: --> ...{}",
+                        LOG_PREFIX, id, le.sourceText());
+                continue;
+            }
+
+            ZoneDefinition.MobEntry entry = new ZoneDefinition.MobEntry();
+            entry.id = id;
+            entry.weight = weight;
+
+            Object groupValue = objFields.get("groupSize");
+            if (groupValue != null) {
+                int[] group = asGroupSize(groupValue);
+                if (group == null) {
+                    ModLogger.warn("{} 'mobs' entry '{}' has an invalid groupSize (expected [min, max] with "
+                            + "1 <= min <= max); using [1, 1]: --> ...{}", LOG_PREFIX, id, le.sourceText());
+                } else {
+                    entry.minGroupSize = group[0];
+                    entry.maxGroupSize = group[1];
+                }
+            }
+            result.add(entry);
+        }
+        return result;
+    }
+
+    /** [min, max] from a two-element list, or null if it isn't exactly that with 1 <= min <= max. */
+    private static int[] asGroupSize(Object value) {
+        if (!(value instanceof List<?> list) || list.size() != 2) {
+            return null;
+        }
+        Integer min = ((ListElement) list.get(0)).value() instanceof String a ? parseIntOrNull(a) : null;
+        Integer max = ((ListElement) list.get(1)).value() instanceof String b ? parseIntOrNull(b) : null;
+        if (min == null || max == null || min < 1 || max < min) {
+            return null;
+        }
+        return new int[]{min, max};
+    }
+
+    private static Integer parseIntOrNull(String s) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static List<ZoneDefinition.StructureEntry> asStructureList(List<?> list) {

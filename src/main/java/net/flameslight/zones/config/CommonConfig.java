@@ -24,6 +24,8 @@ public class CommonConfig {
     public static final ForgeConfigSpec.IntValue ZONE_STEP_DIFFERENCE;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ZONE_SPAWN_WHITELIST;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ZONE_ONLY_STRUCTURES;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ZONE_ONLY_BIOMES;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ZONE_ONLY_MOBS;
     public static final ForgeConfigSpec.IntValue STRUCTURE_DENSITY_SPACING;
     public static final ForgeConfigSpec.BooleanValue DEBUG_MOD;
 
@@ -121,6 +123,31 @@ public class CommonConfig {
                 "    density/maxCount/spaceAround/etc.), while an entry in this zone's own list fully",
                 "    replaces the parent's entry for that id. Ignored if this zone has no parentZone.",
                 "    Example: obeyParent:true",
+                "  mobs (optional) - list of {id:...,weight:...} entries, each defines a different weight for the mob to",
+                "    spawn naturally inside the zone perimeter regardless of biome, by the game. The mob joins the spawn",
+                "    pool of its own category (monster, creature, ...); if the biome already has that mob, the zone's",
+                "    entry replaces the biome's one inside the zone. The mob's own spawn rules (light level, ground block)",
+                "    still apply. If obeyParent is enabled, mobs the zone doesn't list are inherited from the parent.",
+                "    Example: mobs:[{id:minecraft:pillager,weight:100,groupSize:[1, 3]}]",
+                "",
+                "per-mob fields (in 'mobs: [{...}]'):",
+                "  id (REQUIRED) - represents the mob's id. Unknown ids and mobs that never spawn naturally",
+                "    (misc category, e.g. villagers) are skipped with a warning.",
+                "    Example: id:minecraft:pillager",
+                "  weight (REQUIRED) - a whole number, 1 or more: represents how likely this mob is picked, relative",
+                "    to every other mob of the same category allowed at that spot.",
+                "    Vanilla reference weights (most overworld biomes):",
+                "      monster: zombie 95, skeleton 100, creeper 100, enderman 10 (whole pool ~515)",
+                "      creature: sheep 12, pig 10, chicken 10, cow 8",
+                "      ambient: bat 10",
+                "      water: squid 1-10, cod 10-15, tropical fish 25",
+                "    Modded biomes use their own weights. Weight only decides WHICH mob is picked when the",
+                "    game spawns one of that category; how MANY exist is still limited by vanilla's",
+                "    per-category cap around players (e.g. 70 monsters).",
+                "    Example: weight:100",
+                "  groupSize (optional) - [min, max] whole numbers (1 <= min <= max) that together, representing how",
+                "    many mobs to place per spawn. If omitted or invalid then it defaults to [1, 1].",
+                "    Example: groupSize:[1, 2]",
                 "",
                 "per-structure fields (in 'structures: [{...}]'):",
                 "  id (REQUIRED) - an entry with no id is skipped and logged as a warning. A warning is",
@@ -226,6 +253,24 @@ public class CommonConfig {
                         "Example: zoneOnlyStructures = [\"minecraft:mineshaft\",\"minecraft:stronghold\"]")
                 .defineList("zoneOnlyStructures", List.of("minecraft:stronghold"), o -> o instanceof String);
 
+        ZONE_ONLY_BIOMES = builder
+                .comment("Biome ids that never generate naturally in any dimension. They can still appear",
+                        "inside zones through 'ensureBiomeForTheWholeZone'. Wherever such a biome would have",
+                        "generated, the nearest remaining vanilla biome for that spot's climate is used instead.",
+                        "Unknown ids are skipped with a warning.",
+                        "Frozen per world, and only used by worlds created with this option available.",
+                        "Example: zoneOnlyBiomes = [\"biomeswevegone:crag_gardens\"]")
+                .defineList("zoneOnlyBiomes", new ArrayList<>(), o -> o instanceof String);
+
+        ZONE_ONLY_MOBS = builder
+                .comment("Mob ids that never spawn naturally (biome/structure spawn pools) anywhere, EXCEPT",
+                        "inside zones that list them in their own 'mobs'. Spawners, spawn eggs, commands and",
+                        "vanilla's special spawners (patrols, phantoms, wandering traders) are unaffected.",
+                        "Unknown ids are skipped with a warning.",
+                        "Frozen per world, and only used by worlds created with this option available.",
+                        "Example: zoneOnlyMobs = [\"minecraft:pillager\"]")
+                .defineList("zoneOnlyMobs", new ArrayList<>(), o -> o instanceof String);
+
         DEBUG_MOD = builder
                 .comment("Enables this mod's own [DEBUG] log lines.")
                 .define("debugMod", DEFAULT_DEBUG_MOD);
@@ -259,6 +304,8 @@ public class CommonConfig {
             // pick up the change until told to drop that cache too.
             ZONE_SPAWN_WHITELIST.clearCache();
             ZONE_ONLY_STRUCTURES.clearCache();
+            ZONE_ONLY_BIOMES.clearCache();
+            ZONE_ONLY_MOBS.clearCache();
             STRUCTURE_DENSITY_SPACING.clearCache();
             BASE_ZONE_TRIES_PER_RING.clearCache();
             ZONE_STEP_DIFFERENCE.clearCache();
