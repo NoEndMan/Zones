@@ -20,8 +20,8 @@ import java.util.List;
 public final class SpaceAroundTracker {
     /**
      * Check and register as ONE atomic step under the root zone's lock. Returns false if the
-     * candidate violates spaceAround (nothing registered); true otherwise (registered if
-     * spaceAround > 0). Jigsaw pieces have normally been trimmed already during assembly; this
+     * candidate violates spaceAround (nothing registered), true otherwise (registered if
+     * spaceAround > 0). Jigsaw pieces have normally been trimmed already during assembly, this
      * catches races between concurrent assemblies and conflicts of the start piece itself.
      */
     public static boolean checkAndRegister(ResourceLocation dimension, int blockX, int blockZ,
@@ -34,7 +34,7 @@ public final class SpaceAroundTracker {
 
         ZoneDefinition rootDef = WorldZoneConfig.findDefinition(root.zoneType);
 
-        if (rootDef == null || !rootDef.treeHasSpaceAround) {
+        if (rootDef == null || !rootDef.usesSpaceAroundInAnyNestedZones) {
             return true; // config-static: no record can ever exist in this tree
         }
 

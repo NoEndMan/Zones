@@ -15,7 +15,7 @@ import java.util.List;
  */
 public final class LocateCache {
     private static final long TTL_MILLIS = 10_000L; // 10 seconds
-    /** Bounds the list if something scripts /locate; oldest entries are evicted first. */
+    /** Bounds the list if something scripts /locate. Oldest entries are evicted first. */
     private static final int MAX_ENTRIES = 32;
 
     private final List<Entry> entries = new ArrayList<>();
@@ -34,7 +34,7 @@ public final class LocateCache {
         }
     }
 
-    /** Null when nothing usable is cached; an empty array is a real cached answer. */
+    /** Null when nothing usable is cached. An empty array is a real cached answer. */
     public synchronized long[] get(ResourceLocation dimension, String structureId) {
         long now = System.currentTimeMillis();
         long[] hit = null;

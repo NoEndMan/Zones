@@ -1,4 +1,4 @@
-package net.flameslight.zones.types.NoiseChunk;
+package net.flameslight.zones.types.flattenTerrain;
 
 import net.flameslight.zones.ZoneManager;
 import net.minecraft.resources.ResourceLocation;
@@ -45,6 +45,14 @@ public final class FlattenedPreliminarySurfaceFunction implements DensityFunctio
     public FlattenedPreliminarySurfaceFunction(DensityFunction original, RandomState owner) {
         this.original = original;
         this.owner = owner;
+    }
+
+    /**
+     * The router function this wraps (vanilla's initialDensityWithoutJaggedness). Read only through
+     * RWSARouters, the API RW- Structures Awareness Addon uses. Public because RWSARouters is in another package.
+     */
+    public DensityFunction original() {
+        return original;
     }
 
     @Override

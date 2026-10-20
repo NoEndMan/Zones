@@ -27,9 +27,9 @@ import java.util.Map;
  * small buffer, the buffer is flushed to disk on the usual interval, and a search streams the files
  * back.
  *
- * Records are a fixed 10 bytes, a short index into the id table, then the packed (x,z) position that
- * written into numbered buckets (<prefix>_0.bin, _1.bin, ...). A bucket is only ever appended to;
- * once it passes BUCKET_SIZE_LIMIT the next append starts a new one, so a flush never rewrites data
+ * Records are a fixed 10 bytes, a short index into the id table, then the packed (x,z) position. They
+ * are written into numbered buckets (<prefix>_0.bin, _1.bin, ...). A bucket is only ever appended to.
+ * Once it passes BUCKET_SIZE_LIMIT the next append starts a new one, so a flush never rewrites data
  * that is already on disk. The id table lives in its own sidecar file, which keeps the buckets
  * purely append-only.
  *
@@ -84,7 +84,7 @@ public final class LocateStore {
                 index = existing;
             } else {
                 if (idTable.size() > Short.MAX_VALUE) {
-                    return; // more distinct structures than the format can address; nothing sane to do
+                    return; // more distinct structures than the format can address, nothing sane to do
                 }
                 index = idTable.size();
                 idTable.add(structureId);
@@ -109,7 +109,7 @@ public final class LocateStore {
         }
     }
 
-    /** Safe to call from any thread; does its disk work outside the append lock. */
+    /** Safe to call from any thread. Does its disk work outside the append lock. */
     public void flush() {
         byte[] data;
         int length;
@@ -196,7 +196,7 @@ public final class LocateStore {
                     }
                 }
             } catch (NoSuchFileException e) {
-                // Removed between the snapshot and the read; nothing to recover.
+                // Removed between the snapshot and the read. Nothing to recover.
             } catch (IOException e) {
                 ModLogger.error("Could not read recorded placements from {}", bucket, e);
             }
@@ -251,9 +251,11 @@ public final class LocateStore {
         } catch (NoSuchFileException e) {
             // Nothing recorded in this dimension yet.
         } catch (Exception e) {
-            // Without the table the existing buckets can't be decoded. Start a fresh table rather
-            // than mis-resolving indices; the old records stay on disk but are simply never matched.
-            ModLogger.error("Could not read the structure id table from {}; recorded placements made "
+            /*
+                Without the table the existing buckets can't be decoded. Start a fresh table rather
+                than mis-resolving indices. The old records stay on disk but are simply never matched.
+             */
+            ModLogger.error("Could not read the structure id table from {}. Recorded placements made "
                     + "before now will not be found.", file, e);
             idTable.clear();
             idIndex.clear();

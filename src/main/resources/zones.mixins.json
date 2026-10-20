@@ -9,6 +9,7 @@
     "MultiNoiseBiomeSourceAccessor",
     "NoiseBasedChunkGeneratorMixin",
     "RandomStateMixin",
+    "StructureCheckMixin",
     "StructureMixin",
     "StructurePlacementMixin",
     "JigsawPlacerMixin"

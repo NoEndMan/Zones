@@ -27,7 +27,7 @@ public final class ZoneOnlyBiomeFilter {
     private static final ThreadLocal<boolean[]> IN_NATURAL_LOOKUP = ThreadLocal.withInitial(() -> new boolean[1]);
 
     private final Set<Holder<Biome>> zoneOnly;
-    /** The source's own climate table minus the zone-only biomes; null if nothing is left in it. */
+    /** The source's own climate table minus the zone-only biomes, null if nothing is left in it. */
     @Nullable
     private final Climate.ParameterList<Holder<Biome>> replacements;
 
@@ -44,7 +44,7 @@ public final class ZoneOnlyBiomeFilter {
             return null;
         }
         if (!(biomeSource instanceof MultiNoiseBiomeSource)) {
-            ModLogger.debug("zoneOnlyBiomes: {} doesn't use a multi-noise biome source; nothing filtered there.",
+            ModLogger.debug("zoneOnlyBiomes: {} doesn't use a multi-noise biome source, nothing filtered there.",
                     dimension);
             return null;
         }
@@ -52,7 +52,7 @@ public final class ZoneOnlyBiomeFilter {
         for (ResourceLocation id : ids) {
             Holder<Biome> holder = biomes.getHolder(ResourceKey.create(Registries.BIOME, id)).orElse(null);
             if (holder == null) {
-                ModLogger.warn("zoneOnlyBiomes: '{}' is not a known biome; ignored.", id);
+                ModLogger.warn("zoneOnlyBiomes: '{}' is not a known biome, ignored.", id);
             } else {
                 zoneOnly.add(holder);
             }

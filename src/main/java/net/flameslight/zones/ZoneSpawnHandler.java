@@ -27,8 +27,6 @@ import java.util.List;
  */
 @Mod.EventBusSubscriber(modid = Zones.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class ZoneSpawnHandler {
-    private ZoneSpawnHandler() {}
-
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onPotentialSpawns(LevelEvent.PotentialSpawns event) {
         if (!WorldZoneConfig.isSpawnRulesActive()) {
@@ -55,8 +53,10 @@ public final class ZoneSpawnHandler {
             return;
         }
 
-        // Only allocate when something actually has to go: the common case outside zones is a
-        // single scan that finds nothing.
+        /*
+            Only allocate when something actually has to go: the common case outside zones is a
+            single scan that finds nothing.
+         */
         List<MobSpawnSettings.SpawnerData> current = event.getSpawnerDataList();
         MobSpawnSettings.SpawnerData[] toRemove = null;
         int removeCount = 0;

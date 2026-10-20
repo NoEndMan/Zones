@@ -1,7 +1,7 @@
 package net.flameslight.zones.mixins;
 
-import net.flameslight.zones.types.NoiseChunk.FlattenedDensityFunction;
-import net.flameslight.zones.types.NoiseChunk.FlattenedPreliminarySurfaceFunction;
+import net.flameslight.zones.types.flattenTerrain.FlattenedDensityFunction;
+import net.flameslight.zones.types.flattenTerrain.FlattenedPreliminarySurfaceFunction;
 import net.minecraft.core.HolderGetter;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.NoiseRouter;

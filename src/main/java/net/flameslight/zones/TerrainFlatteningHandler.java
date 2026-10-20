@@ -26,7 +26,7 @@ import java.util.List;
  * surface actually was, sampled once before any of our own edits touch it: a column whose natural
  * surface is water (part of a lake/ocean/river) gets filled with water, so a natural water body
  * inside the zone stays a water body at the new flattened level instead of being paved over with
- * stone; every other column gets solid stone. This is a single decision per column, applied
+ * stone. Every other column gets solid stone. This is a single decision per column, applied
  * uniformly across the whole fill range.
  */
 public final class TerrainFlatteningHandler {
@@ -38,7 +38,7 @@ public final class TerrainFlatteningHandler {
     private static final int FILL_PATCH_DEPTH = 4;
 
     /** Which sorted sample the SURFACE mode targets. The minimum lets one point on a seabed or in
-     *  a ravine cut the whole zone down to it; a low percentile still biases toward cutting rather
+     *  a ravine cut the whole zone down to it. A low percentile still biases toward cutting rather
      *  than filling, without following a single outlier. */
     private static final float SURFACE_SAMPLE_PERCENTILE = 0.3f;
 
@@ -82,8 +82,10 @@ public final class TerrainFlatteningHandler {
                 int wx = baseX + lx;
                 int wz = baseZ + lz;
 
-                // One decision per column: the SMALLEST zone covering it wins, matching how
-                // ZoneManager resolves overlapping zones everywhere else.
+                /*
+                    One decision per column: the SMALLEST zone covering it wins, matching how
+                    ZoneManager resolves overlapping zones everywhere else.
+                 */
                 ZoneInstance best = null;
                 for (ZoneInstance zi : touching) {
                     if (zi.contains(wx, wz) && (best == null || zi.radius < best.radius)) {
@@ -154,18 +156,22 @@ public final class TerrainFlatteningHandler {
         for (int y = fillFrom; y <= targetY; y++) {
             pos.set(wx, y, wz);
             BlockState state = chunk.getBlockState(pos);
-            // Land columns: fill air AND any stray water pocket with solid. Water columns: only
-            // fill genuine air gaps with water. existing water already at the right level is
-            // left untouched rather than needlessly rewritten.
+            /*
+                Land columns: fill air AND any stray water pocket with solid. Water columns: only
+                fill genuine air gaps with water. Existing water already at the right level is
+                left untouched rather than needlessly rewritten.
+             */
             boolean needsFill = state.isAir() || (!waterColumn && !state.getFluidState().isEmpty());
             if (needsFill) {
                 chunk.setBlockState(pos, fillState, false);
             }
         }
 
-        // The noise stage already produced air above targetY (FlattenedDensityFunction), so this
-        // pass only mops up what slipped past it: aquifer fluid and other mods' own fillFromNoise
-        // writes.
+        /*
+            The noise stage already produced air above targetY (FlattenedDensityFunction), so this
+            pass only mops up what slipped past it: aquifer fluid and other mods' own fillFromNoise
+            writes.
+         */
         int clipTo = Math.min(chunk.getMaxBuildHeight() - 1, Math.max(naturalTop, targetY + CLIP_MARGIN_ABOVE));
 
         for (int y = targetY + 1; y <= clipTo; y++) {

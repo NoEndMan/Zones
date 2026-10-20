@@ -33,7 +33,7 @@ public class ZoneInstance {
     public boolean spaceAroundRetired = false;
     /**
      * One bit per chunk column in this zone's bounding grid. Persisted so progress survives a
-     * restart; nulled on retirement, which is when it stops being worth anything.
+     * restart. Nulled on retirement, which is when it stops being worth anything.
      */
     public long[] generatedChunkBits = null;
     private transient int totalChunks = -1; // transient: recomputed on load, never persisted
@@ -215,7 +215,7 @@ public class ZoneInstance {
     }
 
     /**
-     * Gson writes plain collections into the fields; swap them for concurrent ones before any
+     * Gson writes plain collections into the fields. Swap them for concurrent ones before any
      * worker thread can see this instance.
      */
     public void normalizeCollectionsAfterLoad() {
@@ -260,8 +260,10 @@ public class ZoneInstance {
         }
         int words = (int) ((bits + 63) >>> 6);
         if (generatedChunkBits == null || generatedChunkBits.length != words) {
-            // Absent, or the zone's geometry changed under a hand-edited save: start over rather
-            // than index into a mismatched bitmap.
+            /*
+                Absent, or the zone's geometry changed under a hand-edited save: start over rather
+                than index into a mismatched bitmap.
+             */
             generatedChunkBits = new long[words];
             generatedChunks = 0;
         }

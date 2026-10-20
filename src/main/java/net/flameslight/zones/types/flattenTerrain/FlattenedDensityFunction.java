@@ -1,4 +1,4 @@
-package net.flameslight.zones.types.NoiseChunk;
+package net.flameslight.zones.types.flattenTerrain;
 
 import net.flameslight.zones.ZoneManager;
 import net.minecraft.resources.ResourceLocation;
@@ -53,9 +53,11 @@ public final class FlattenedDensityFunction implements DensityFunction {
             return;
         }
 
-        // One chunk-level test instead of a per-cell lookup: every context in a single fillArray
-        // call belongs to the same chunk, so if no flatten zone touches that chunk, nothing in
-        // this array can need overwriting.
+        /*
+            One chunk-level test instead of a per-cell lookup: every context in a single fillArray
+            call belongs to the same chunk, so if no flatten zone touches that chunk, nothing in
+            this array can need overwriting.
+         */
         FunctionContext first = contextProvider.forIndex(0);
         if (!ZoneManager.chunkHasFlattenZone(dimension, first.blockX(), first.blockZ())) {
             return;

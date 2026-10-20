@@ -23,11 +23,9 @@ import java.util.List;
 
 public class ZoneLocateCommand {
     private static final DynamicCommandExceptionType UNKNOWN_ZONE = new DynamicCommandExceptionType(
-            id -> Component.literal("Unknown zone id '" + id));
+            id -> Component.literal("Unknown zone id '" + id + "'."));
     private static final DynamicCommandExceptionType NOT_FOUND = new DynamicCommandExceptionType(
             id -> Component.literal("No instance of zone '" + id + "' exists in this dimension."));
-
-    private ZoneLocateCommand() {}
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("locatezone")

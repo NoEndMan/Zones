@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.At;
 /**
  * Trimming for blockLeakingOutsideZone / blockLeakingIntoNestedZones / per-piece spaceAround, for
  * jigsaw structures. tryPlacingChildren asks joinIsNotEmpty(freeSpace, candidate, ONLY_SECOND)
- * whether a candidate piece collides; answering "collides" makes vanilla skip it and close that
+ * whether a candidate piece collides. Answering "collides" makes vanilla skip it and close that
  * branch naturally. WrapOperation chains with other mods' wraps of the same call instead of
  * conflicting.
  */

@@ -68,7 +68,7 @@ public class ZoneDefinitionParser {
             return parseList();
         }
         if (c == '{') {
-            pos++; // consume '{'; parseFieldList consumes the matching '}' itself
+            pos++; // consume '{', parseFieldList consumes the matching '}' itself
             return parseFieldList('}');
         }
         return parseScalar();
@@ -230,11 +230,11 @@ public class ZoneDefinitionParser {
             try {
                 return Integer.parseInt(s);
             } catch (NumberFormatException e) {
-                ModLogger.warn("{} field '{}' is not a whole number ('{}'); using default {}: --> {}", LOG_PREFIX, key, s, fallback, raw);
+                ModLogger.warn("{} field '{}' is not a whole number ('{}'), using default {}: --> {}", LOG_PREFIX, key, s, fallback, raw);
                 return fallback;
             }
         }
-        ModLogger.warn("{} field '{}' expected a number but was a list/object; using default {}: --> {}", LOG_PREFIX, key, fallback, raw);
+        ModLogger.warn("{} field '{}' expected a number but was a list/object, using default {}: --> {}", LOG_PREFIX, key, fallback, raw);
         return fallback;
     }
 
@@ -243,11 +243,11 @@ public class ZoneDefinitionParser {
             try {
                 return Float.parseFloat(s);
             } catch (NumberFormatException e) {
-                ModLogger.warn("{} field '{}' is not a number ('{}'); using default {}: --> {}", LOG_PREFIX, key, s, fallback, raw);
+                ModLogger.warn("{} field '{}' is not a number ('{}'), using default {}: --> {}", LOG_PREFIX, key, s, fallback, raw);
                 return fallback;
             }
         }
-        ModLogger.warn("{} field '{}' expected a number but was a list/object; using default {}: --> {}", LOG_PREFIX, key, fallback, raw);
+        ModLogger.warn("{} field '{}' expected a number but was a list/object, using default {}: --> {}", LOG_PREFIX, key, fallback, raw);
         return fallback;
     }
 
@@ -259,16 +259,16 @@ public class ZoneDefinitionParser {
             if (s.equalsIgnoreCase("false")) {
                 return false;
             }
-            ModLogger.warn("{} field '{}' expected true/false but was '{}'; using default {}: --> {}", LOG_PREFIX, key, s, fallback, raw);
+            ModLogger.warn("{} field '{}' expected true/false but was '{}', using default {}: --> {}", LOG_PREFIX, key, s, fallback, raw);
             return fallback;
         }
-        ModLogger.warn("{} field '{}' expected true/false but was a list/object; using default {}: --> {}", LOG_PREFIX, key, fallback, raw);
+        ModLogger.warn("{} field '{}' expected true/false but was a list/object, using default {}: --> {}", LOG_PREFIX, key, fallback, raw);
         return fallback;
     }
 
     /**
      * true/false, or a biome resource id to force instead of the zone's center biome. A malformed id
-     * disables the option; whether the id actually exists is checked by ZoneGenerator once the biome
+     * disables the option. Whether the id actually exists is checked by ZoneGenerator once the biome
      * registry is available.
      */
     private static void applyEnsureBiome(ZoneDefinition def, Object value, String key, String raw) {
@@ -284,7 +284,7 @@ public class ZoneDefinitionParser {
         }
         ResourceLocation id = ResourceLocation.tryParse(s);
         if (id == null) {
-            ModLogger.warn("{} field '{}' is neither true/false nor a valid biome id ('{}'); option disabled: --> {}",
+            ModLogger.warn("{} field '{}' is neither true/false nor a valid biome id ('{}'), option disabled: --> {}",
                     LOG_PREFIX, key, s, raw);
             def.ensureBiomeForTheWholeZone = false;
             def.ensureBiomeId = null;
@@ -311,7 +311,7 @@ public class ZoneDefinitionParser {
                 }
             }
         }
-        ModLogger.warn("{} field '{}' expected 'surface', 'underwater_surface' or 'off'; using {}: --> {}",
+        ModLogger.warn("{} field '{}' expected 'surface', 'underwater_surface' or 'off', using {}: --> {}",
                 LOG_PREFIX, key, fallback, raw);
         return fallback;
     }
@@ -338,7 +338,7 @@ public class ZoneDefinitionParser {
         return result;
     }
 
-    /** Strict true/false for a per-structure option. Absent -> false; anything else warns -> false. */
+    /** Strict true/false for a per-structure option. Absent -> false, anything else warns -> false. */
     private static boolean asEntryBoolean(Object value, String key, String structureId, String sourceText) {
         if (value == null) {
             return false;
@@ -351,12 +351,12 @@ public class ZoneDefinitionParser {
                 return false;
             }
         }
-        ModLogger.warn("{} 'structures' entry '{}' field '{}' expected true/false; using false: --> ...{}",
+        ModLogger.warn("{} 'structures' entry '{}' field '{}' expected true/false, using false: --> ...{}",
                 LOG_PREFIX, structureId, key, sourceText);
         return false;
     }
 
-    /** id and weight are required; groupSize [min, max] is optional and falls back to [1, 1]. */
+    /** id and weight are required. groupSize [min, max] is optional and falls back to [1, 1]. */
     private static List<ZoneDefinition.MobEntry> asMobList(List<?> list) {
         List<ZoneDefinition.MobEntry> result = new ArrayList<>();
         for (int i = 0; i < list.size(); i++) {
@@ -390,7 +390,7 @@ public class ZoneDefinitionParser {
                 int[] group = asGroupSize(groupValue);
                 if (group == null) {
                     ModLogger.warn("{} 'mobs' entry '{}' has an invalid groupSize (expected [min, max] with "
-                            + "1 <= min <= max); using [1, 1]: --> ...{}", LOG_PREFIX, id, le.sourceText());
+                            + "1 <= min <= max), using [1, 1]: --> ...{}", LOG_PREFIX, id, le.sourceText());
                 } else {
                     entry.minGroupSize = group[0];
                     entry.maxGroupSize = group[1];
@@ -446,7 +446,7 @@ public class ZoneDefinitionParser {
                 try {
                     se.density = Float.parseFloat(ds);
                 } catch (NumberFormatException e) {
-                    ModLogger.warn("{} 'structures' entry '{}' has a non-numeric density ('{}'); using default 1.0: --> ...{}", LOG_PREFIX, s, ds, le.sourceText());
+                    ModLogger.warn("{} 'structures' entry '{}' has a non-numeric density ('{}'), using default 1.0: --> ...{}", LOG_PREFIX, s, ds, le.sourceText());
                 }
             }
             if (se.density <= 0f) {
@@ -460,21 +460,21 @@ public class ZoneDefinitionParser {
                 try {
                     se.maxCount = Math.max(0, Integer.parseInt(mcs));
                 } catch (NumberFormatException e) {
-                    ModLogger.warn("{} 'structures' entry '{}' has a non-numeric maxCount ('{}'); ignoring it: --> ...{}", LOG_PREFIX, s, mcs, le.sourceText());
+                    ModLogger.warn("{} 'structures' entry '{}' has a non-numeric maxCount ('{}'), ignoring it: --> ...{}", LOG_PREFIX, s, mcs, le.sourceText());
                 }
             }
             if (objFields.get("spaceAround") instanceof String sas) {
                 try {
                     se.spaceAround = Math.max(0, Integer.parseInt(sas));
                 } catch (NumberFormatException e) {
-                    ModLogger.warn("{} 'structures' entry '{}' has a non-numeric spaceAround ('{}'); ignoring it: --> ...{}", LOG_PREFIX, s, sas, le.sourceText());
+                    ModLogger.warn("{} 'structures' entry '{}' has a non-numeric spaceAround ('{}'), ignoring it: --> ...{}", LOG_PREFIX, s, sas, le.sourceText());
                 }
             }
             if (objFields.get("spreadDistance") instanceof String sds) {
                 try {
                     se.spreadDistance = Integer.parseInt(sds);
                 } catch (NumberFormatException e) {
-                    ModLogger.warn("{} 'structures' entry '{}' has a non-numeric spreadDistance ('{}'); using default: --> ...{}", LOG_PREFIX, s, sds, le.sourceText());
+                    ModLogger.warn("{} 'structures' entry '{}' has a non-numeric spreadDistance ('{}'), using default: --> ...{}", LOG_PREFIX, s, sds, le.sourceText());
                 }
             }
 

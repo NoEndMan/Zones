@@ -16,7 +16,7 @@ import java.util.Map;
  *
  * The snapshot is taken on the server thread and the disk work handed to the IO pool, so the tick
  * thread never blocks on it. Zone instances are mutated under their own monitors, so a snapshot can
- * miss a counter bump that lands mid-serialization; the next flush picks it up.
+ * miss a counter bump that lands mid-serialization. The next flush picks it up.
  */
 public final class ZonePersistenceHandler {
     /** 30 seconds. Long enough that the serialization cost is noise, short enough that a crash
@@ -25,7 +25,7 @@ public final class ZonePersistenceHandler {
 
     private static int flushCountdown = FLUSH_INTERVAL_TICKS;
 
-    /** Called every server tick (END phase); does real work once per FLUSH_INTERVAL_TICKS. */
+    /** Called every server tick (END phase). Does real work once per FLUSH_INTERVAL_TICKS. */
     public static void onServerTick() {
         if (--flushCountdown > 0) {
             return;

@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * copies of the piece boxes whose padded footprint touches it. Never persisted and rebuilt lazily
  * after load, dropped on retirement.
  *
- * Reads are lock-free (the jigsaw placer queries it thousands of times per village); writes happen
+ * Reads are lock-free (the jigsaw placer queries it thousands of times per village). Writes happen
  * only under the owning root zone's spaceAroundLock and are copy-on-write per cell, so a reader
  * always sees a complete array.
  *
@@ -34,8 +34,10 @@ public final class SpaceAroundGrid {
         }
         int pad = record.spaceAround;
         for (int i = 0; i + 5 < p.length; i += 6) {
-            // Filed over the piece's PADDED footprint, so any candidate within `pad` of it lands in
-            // a shared cell (see conflicts()).
+            /*
+                Filed over the piece's PADDED footprint, so any candidate within `pad` of it lands in
+                a shared cell (see conflicts()).
+             */
             int cx0 = (p[i] - pad) >> CELL_SHIFT;
             int cz0 = (p[i + 2] - pad) >> CELL_SHIFT;
             int cx1 = (p[i + 3] + pad) >> CELL_SHIFT;

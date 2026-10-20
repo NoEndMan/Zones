@@ -34,9 +34,11 @@ public abstract class StructurePlacementMixin {
         int blockX = (chunkX << 4) + 8;
         int blockZ = (chunkZ << 4) + 8;
 
-        // ChunkGeneratorStructureState has no generator, but its RandomState is the level's own,
-        // so this resolves the dimension exactly. Null only if the state isn't one we registered,
-        // in which case ZoneManager falls back to scanning every loaded dimension.
+        /*
+            ChunkGeneratorStructureState has no generator, but its RandomState is the level's own,
+            so this resolves the dimension exactly. Null only if the state isn't one we registered,
+            in which case ZoneManager falls back to scanning every loaded dimension.
+         */
         ResourceLocation dimension = ZoneManager.getDimensionForRandomState(structureState.randomState());
 
         if (ZoneManager.shouldForceGuaranteedEligibility(dimension, blockX, blockZ, structureIds)) {

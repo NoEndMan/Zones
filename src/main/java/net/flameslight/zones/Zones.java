@@ -21,8 +21,10 @@ public class Zones
 
     @SuppressWarnings("removal")
     public Zones() {
-        // NightConfig writes common-config.toml into this folder; create it first so the very first
-        // launch can't race the folder into existence.
+        /*
+            NightConfig writes common-config.toml into this folder. Create it first so the very first
+            launch can't race the folder into existence.
+         */
         Path configFolder = FMLPaths.CONFIGDIR.get().resolve(MOD_ID);
         try {
             Files.createDirectories(configFolder);

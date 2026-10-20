@@ -22,7 +22,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(value = MultiNoiseBiomeSource.class, priority = 900)
 public abstract class MultiNoiseBiomeSourceMixin implements ZoneBiomeSourceHolder {
-    /** Set once at level load (ZoneManager), read by every worldgen thread; null = not ours. */
+    /** Set once at level load (ZoneManager), read by every worldgen thread. null = not ours. */
     @Unique
     private volatile ZoneBiomeSourceContext structurezones$context;
 
@@ -54,7 +54,7 @@ public abstract class MultiNoiseBiomeSourceMixin implements ZoneBiomeSourceHolde
         }
 
         if (forced) {
-            // x/y/z here are quart (4-block) coordinates; convert to a representative block position.
+            // x/y/z here are quart (4-block) coordinates. Convert to a representative block position.
             Holder<Biome> forcedBiome = ZoneManager.getForcedBiome(context.dimension(), (x << 2) + 2, (y << 2) + 2, (z << 2) + 2);
             if (forcedBiome != null) {
                 cir.setReturnValue(forcedBiome);

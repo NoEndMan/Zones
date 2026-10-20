@@ -30,20 +30,26 @@ public class ServerEvents {
     @SubscribeEvent
     public static void onLevelLoad(LevelEvent.Load event) {
         if (event.getLevel() instanceof ServerLevel serverLevel) {
-            // Decides WHICH config this world runs on, and whether this mod touches it at all.
-            // Must run before loadOrGenerate.
+            /*
+                Decides WHICH config this world runs on, and whether this mod touches it at all.
+                Must run before loadOrGenerate.
+             */
             if (!WorldZoneConfig.loadOrCreate(serverLevel)) {
-                // Nothing registered -> every mixin bails on its own null/flag check, so this
-                // world generates exactly as it would without the mod.
+                /*
+                    Nothing registered -> every mixin bails on its own null/flag check, so this
+                    world generates exactly as it would without the mod.
+                 */
                 return;
             }
 
             ResourceLocation dimension = serverLevel.dimension().location();
             ChunkGenerator chunkGenerator = serverLevel.getChunkSource().getGenerator();
 
-            // Registered BEFORE loadOrGenerate: zone placement samples biomes through the biome
-            // source, and must already see zoneOnlyBiomes filtered out. Every lookup still finds no
-            // zone until loadOrGenerate indexes them, so nothing else changes during generation.
+            /*
+                Registered BEFORE loadOrGenerate: zone placement samples biomes through the biome
+                source, and must already see zoneOnlyBiomes filtered out. Every lookup still finds no
+                zone until loadOrGenerate indexes them, so nothing else changes during generation.
+             */
             ZoneManager.registerChunkGenerator(chunkGenerator, dimension);
             ZoneManager.registerBiomeSource(chunkGenerator.getBiomeSource(), dimension);
             ZoneManager.registerRandomState(serverLevel.getChunkSource().randomState(), dimension);

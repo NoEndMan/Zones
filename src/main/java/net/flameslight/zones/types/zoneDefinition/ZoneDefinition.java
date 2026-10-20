@@ -20,17 +20,18 @@ public class ZoneDefinition {
     public int minDistanceFromOtherZones = 0;
     public int minDistanceFromSpawn = 0;
     public boolean ensureBiomeForTheWholeZone = false;
-    /** Explicit biome id given as the ensureBiomeForTheWholeZone value; null = use the zone's center biome. */
+    /** Explicit biome id given as the ensureBiomeForTheWholeZone value. Null = use the zone's center biome. */
     public ResourceLocation ensureBiomeId = null;
     public FlattenMode shouldFlattenTerrain = FlattenMode.OFF;
     public boolean obeyParent = false;
     public boolean hasChildZones = false;
-    /** Set by ZoneManager.recomputeDerivedState: does anything in this zone's own structure list
-     *  produce per-instance data that retirement could free? */
+    /** Set by ZoneManager.recomputeDerivedState: does this zone hold per-instance data that
+     *  retirement could free (from its own structure list, or, for a top-level zone, the spaceAround
+     *  records it keeps for its nested zones too)? */
     public boolean hasReclaimableData = false;
-    /** Set by WorldZoneConfig.build, on TOP-LEVEL definitions only: some entry anywhere in this
-     *  zone tree has spaceAround > 0. False lets spaceAround skip its lock and index entirely. */
-    public boolean treeHasSpaceAround = false;
+    /** Set by WorldZoneConfig.build, on TOP-LEVEL definitions only: this zone, or a zone nested
+     *  inside it, has an entry with spaceAround > 0. False lets spaceAround skip its lock and index entirely. */
+    public boolean usesSpaceAroundInAnyNestedZones = false;
     public List<MobEntry> mobs = List.of();
     /**
      * Set by WorldZoneConfig.build: this zone's effective 'mobs' (own entries, plus the parent's

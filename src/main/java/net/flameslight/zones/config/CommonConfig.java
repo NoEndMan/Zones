@@ -125,7 +125,7 @@ public class CommonConfig {
                 "    Example: obeyParent:true",
                 "  mobs (optional) - list of {id:...,weight:...} entries, each defines a different weight for the mob to",
                 "    spawn naturally inside the zone perimeter regardless of biome, by the game. The mob joins the spawn",
-                "    pool of its own category (monster, creature, ...); if the biome already has that mob, the zone's",
+                "    pool of its own category (monster, creature, ...). If the biome already has that mob, the zone's",
                 "    entry replaces the biome's one inside the zone. The mob's own spawn rules (light level, ground block)",
                 "    still apply. If obeyParent is enabled, mobs the zone doesn't list are inherited from the parent.",
                 "    A mob listed more than once in the same zone's 'mobs' uses only its LAST entry - the earlier",
@@ -146,7 +146,7 @@ public class CommonConfig {
                 "      ambient: bat 10",
                 "      water: squid 1-10, cod 10-15, tropical fish 25",
                 "    Modded biomes use their own weights. Weight only decides WHICH mob is picked when the",
-                "    game spawns one of that category; how MANY exist is still limited by vanilla's",
+                "    game spawns one of that category. How MANY exist is still limited by vanilla's",
                 "    per-category cap around players (e.g. 70 monsters).",
                 "    Example: weight:100",
                 "  groupSize (optional) - [min, max] whole numbers (1 <= min <= max) that together, representing how",
@@ -234,7 +234,7 @@ public class CommonConfig {
         ZONE_STEP_DIFFERENCE = builder
                 .comment("Default to 256. Fixed distance, in blocks, between each top-level zone search ring:",
                         "ring 1 sits this many blocks from world origin, ring 2 at 2x that distance, ring 3 at 3x,",
-                        "and so on. Nothing is ever placed at the world origin itself; Use this option to",
+                        "and so on. Nothing is ever placed at the world origin itself. Use this option to",
                         "increase or lower all zones grouping and rarity. Must be a positive whole number.")
                 .defineInRange("zoneStepDifference", DEFAULT_ZONE_STEP_DIFFERENCE, 1, 50_000_000);
 
@@ -295,7 +295,7 @@ public class CommonConfig {
                     .orElse(null);
             if (modConfig == null) {
                 LOGGER.warn("Could not locate the zones common config to force-reload it before world "
-                        + "creation; it will still pick up changes on its own once Forge's file watcher notices the edit.");
+                        + "creation. It will still pick up changes on its own once Forge's file watcher notices the edit.");
                 return;
             }
             Object configData = modConfig.getConfigData();
@@ -303,9 +303,11 @@ public class CommonConfig {
                 fileConfig.load();
             }
 
-            // Reloading the backing file only refreshes the raw key/value data. each
-            // ForgeConfigSpec.ConfigValue caches its OWN already-parsed value internally and won't
-            // pick up the change until told to drop that cache too.
+            /*
+                Reloading the backing file only refreshes the raw key/value data. Each
+                ForgeConfigSpec.ConfigValue caches its OWN already-parsed value internally and won't
+                pick up the change until told to drop that cache too.
+             */
             ZONE_SPAWN_WHITELIST.clearCache();
             ZONE_ONLY_STRUCTURES.clearCache();
             ZONE_ONLY_BIOMES.clearCache();
@@ -319,7 +321,7 @@ public class CommonConfig {
 
             LOGGER.debug("Reloaded zones config from disk before world creation.");
         } catch (Exception e) {
-            LOGGER.warn("Failed to force-reload the zones config before world creation; proceeding with "
+            LOGGER.warn("Failed to force-reload the zones config before world creation, proceeding with "
                     + "whatever was already loaded.", e);
         }
     }

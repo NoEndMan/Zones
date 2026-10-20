@@ -33,10 +33,12 @@ public class SearchState {
         this.triesPerRing = triesPerRing;
         this.ringChance = ringChance;
         this.tryChance = tryChance;
-        // Salted by the zone's own id, so adding or removing a zone file never shifts any
-        // other zone's rings.
+        /*
+            Salted by the zone's own id, so adding or removing a zone file never shifts any
+            other zone's rings.
+         */
         this.rollSalt = def.id.hashCode() * 31L + worldSeed;
-        this.ringRadius = stepDifference; // ring 1; there is no try at the world origin
+        this.ringRadius = stepDifference; // ring 1, there is no try at the world origin
     }
 
     /** Deterministic per ring index, so calling it repeatedly while a ring is still being tried

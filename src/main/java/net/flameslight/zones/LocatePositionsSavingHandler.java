@@ -101,8 +101,8 @@ public final class LocatePositionsSavingHandler {
                     return store.scan(structureIdStr);
                 }, Util.ioPool()).get(READ_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
             } catch (TimeoutException e) {
-                // The scan keeps running and its result is discarded; the next call starts over.
-                ModLogger.warn("Timed out reading recorded placements for '{}'; leaving this search to "
+                // The scan keeps running and its result is discarded. The next call starts over.
+                ModLogger.warn("Timed out reading recorded placements for '{}', leaving this search to "
                         + "vanilla, which cannot see placements made off its own spacing grid.", structureIdStr);
                 return Optional.empty();
             } catch (InterruptedException e) {

@@ -36,7 +36,7 @@ public class SpawningInsideZoneHandler {
                 }
             }
         }
-        ModLogger.warn("Could not find an open-sky spawn position within {} blocks of [{}, {}]; "
+        ModLogger.warn("Could not find an open-sky spawn position within {} blocks of [{}, {}]. "
                         + "falling back to the raw heightmap position, which may be underground.",
                 maxRadius, centerX, centerZ);
         int fallbackY = level.getHeight(Heightmap.Types.WORLD_SURFACE, centerX, centerZ);

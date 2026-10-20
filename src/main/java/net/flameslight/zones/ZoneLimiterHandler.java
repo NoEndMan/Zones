@@ -21,7 +21,7 @@ import java.util.List;
  *
  * The leak rules apply to EVERY structure, but are enforced differently: a jigsaw structure is
  * trimmed piece by piece during assembly (JigsawPlacerMixin calls blocksCandidate), so it grows
- * around the boundary and still generates; anything else has no assembly to trim, so
+ * around the boundary and still generates. Anything else has no assembly to trim, so
  * violatesLeakRules at RETURN rejects the whole start. spaceAround's grid is read ONLY by the
  * placer hook, so it is not even set up for a non-jigsaw structure.
  *
@@ -43,7 +43,7 @@ public final class ZoneLimiterHandler {
 
         void clear() {
             if (!active) {
-                return; // nothing was ever set up; skip nulling six fields per structure attempt
+                return; // nothing was ever set up, skip nulling six fields per structure attempt
             }
             active = false;
             startZone = null;
@@ -81,14 +81,16 @@ public final class ZoneLimiterHandler {
             collectBlockedNested(dimension, start, startDef, structureId, c.blockedNested);
         }
 
-        // Only the placer hook reads the grid, and only a jigsaw structure reaches it: building it
-        // for anything else would resolve the root zone and possibly populate a whole index that
-        // nothing then queries.
+        /*
+            Only the placer hook reads the grid, and only a jigsaw structure reaches it: building it
+            for anything else would resolve the root zone and possibly populate a whole index that
+            nothing then queries.
+         */
         if (isJigsaw) {
             ZoneInstance root = ZoneManager.findRootZone(dimension, blockX, blockZ);
             if (root != null) {
                 ZoneDefinition rootDef = root == start ? startDef : WorldZoneConfig.findDefinition(root.zoneType);
-                if (rootDef != null && rootDef.treeHasSpaceAround) {
+                if (rootDef != null && rootDef.usesSpaceAroundInAnyNestedZones) {
                     SpaceAroundGrid grid = root.ensureSpaceAroundGrid();
                     if (grid != null) {
                         c.root = root;
@@ -128,8 +130,10 @@ public final class ZoneLimiterHandler {
         if (blocksByLeakRules(c, minX, minZ, maxX, maxZ)) {
             return true;
         }
-        // Pieces fully outside the top-level zone are ignored by spaceAround (by design). The
-        // grid read is lock-free; the atomic check at generate RETURN catches any race.
+        /*
+            Pieces fully outside the top-level zone are ignored by spaceAround (by design). The
+            grid read is lock-free. The atomic check at generate RETURN catches any race.
+         */
         return c.grid != null
                 && c.root.intersectsBox(minX, minZ, maxX, maxZ)
                 && c.grid.conflicts(minX, minY, minZ, maxX, maxY, maxZ, c.ownSpaceAround);
@@ -160,8 +164,8 @@ public final class ZoneLimiterHandler {
             return true;
         }
         List<ZoneInstance> nested = c.blockedNested;
-        for (int i = 0; i < nested.size(); i++) {
-            if (nested.get(i).intersectsBox(minX, minZ, maxX, maxZ)) {
+        for (ZoneInstance zoneInstance : nested) {
+            if (zoneInstance.intersectsBox(minX, minZ, maxX, maxZ)) {
                 return true;
             }
         }

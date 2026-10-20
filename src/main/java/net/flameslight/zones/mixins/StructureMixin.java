@@ -62,8 +62,10 @@ public abstract class StructureMixin {
             return;
         }
 
-        // The context is only worth building when something will actually read it: the placer hook
-        // (jigsaw only) or a leak rule. Everything else skips it entirely.
+        /*
+            The context is only worth building when something will actually read it: the placer hook
+            (jigsaw only) or a leak rule. Everything else skips it entirely.
+         */
         String idStr = ZoneManager.idString(structureId);
         ZoneDefinition.StructureEntry entry = ZoneManager.resolveEntryAt(dimension, blockX, blockZ, idStr);
         if (entry == null) {
@@ -138,9 +140,11 @@ public abstract class StructureMixin {
             boolean succeeded = placementResult != null && placementResult != StructureStart.INVALID_START;
             boolean jigsaw = self instanceof JigsawStructure;
 
-            // Leak rules, for every structure type. A jigsaw's child pieces were already trimmed
-            // during assembly, so this catches its start piece (never trimmed) and any assembly
-            // path that bypassed the placer hook; for anything else it is the only enforcement.
+            /*
+                Leak rules, for every structure type. A jigsaw's child pieces were already trimmed
+                during assembly, so this catches its start piece (never trimmed) and any assembly
+                path that bypassed the placer hook. For anything else it is the only enforcement.
+             */
             if (succeeded && ZoneLimiterHandler.violatesLeakRules(placementResult)) {
                 cir.setReturnValue(StructureStart.INVALID_START);
                 succeeded = false;

@@ -111,7 +111,7 @@ public final class ZoneDefinitionFiles {
     }
 
     /**
-     * Whole-line '//' comments, blank lines and line breaks are dropped; surviving lines are concatenated with
+     * Whole-line '//' comments, blank lines and line breaks are dropped. Surviving lines are concatenated with
      * NOTHING between them, so the whole file reads as one logical line. Fields are separated by
      * commas exactly as before.
      */

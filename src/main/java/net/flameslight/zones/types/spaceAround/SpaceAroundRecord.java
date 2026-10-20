@@ -3,8 +3,8 @@ package net.flameslight.zones.types.spaceAround;
 
 /**
  * One placed structure's spaceAround footprint, stored on its ROOT (top-level) zone instance.
- * Non-jigsaw structures are a single piece (their overall box); jigsaw structures store one box
- * per piece. Persisted with the zone data; never mutated after creation.
+ * Non-jigsaw structures are a single piece (their overall box), jigsaw structures store one box
+ * per piece. Persisted with the zone data, never mutated after creation.
  */
 public final class SpaceAroundRecord {
     public int spaceAround;

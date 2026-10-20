@@ -29,7 +29,7 @@ import java.util.function.Predicate;
  *
  * Top-level zone types (no parentZone) have no interdependency, so ALL of them are searched
  * together in one interleaved pass: every zone type with count unlimited or count > 0 starts in a
- * shared "active" pool; each iteration picks ONE random zone type from that pool and tries its next
+ * shared "active" pool. Each iteration picks ONE random zone type from that pool and tries its next
  * candidate point (random points on successively wider rings spaced zoneStepDifference apart, the
  * first of which sits that far from the world origin). A zone type is dropped from the pool once
  * its count is reached, its search radius passes the world border, or (unlimited count) enough
@@ -67,8 +67,10 @@ final class ZoneGenerator {
         BiomeSource biomeSource = chunkGenerator.getBiomeSource();
         RandomState randomState = level.getChunkSource().randomState();
         LevelHeightAccessor heightAccessor = level;
-        // Seed-derived, so layout is deterministic per world seed and
-        // independent of anything else consuming the level's live random source.
+        /*
+            Seed-derived, so layout is deterministic per world seed and
+            independent of anything else consuming the level's live random source.
+         */
         RandomSource random = RandomSource.create(level.getSeed() ^ 0x5A11A5DEEDL);
         long worldSeed = level.getSeed();
         Predicate<ZoneDefinition> forcesBiome = forcedBiomeFilter(defs, level);
@@ -78,8 +80,10 @@ final class ZoneGenerator {
         Set<String> resolved = new HashSet<>();
         List<ZoneDefinition> remaining = new ArrayList<>(defs);
 
-        // All top-level defs resolve together, interleaved, in one pass and never depend on
-        // each other so there's no need to process them one at a time.
+        /*
+            All top-level defs resolve together, interleaved, in one pass and never depend on
+            each other so there's no need to process them one at a time.
+         */
         List<ZoneDefinition> topLevelDefs = remaining.stream()
                 .filter(d -> d.parentZone == null || d.parentZone.isEmpty())
                 .toList();
@@ -92,8 +96,10 @@ final class ZoneGenerator {
             remaining.removeAll(topLevelDefs);
         }
 
-        // Nested defs still resolve one at a time, in dependency order. each needs its parent's
-        // instances to already exist in `result` before it can place itself onto them.
+        /*
+            Nested defs still resolve one at a time, in dependency order. Each needs its parent's
+            instances to already exist in `result` before it can place itself onto them.
+         */
         boolean progress = true;
         while (!remaining.isEmpty() && progress) {
             progress = false;
@@ -146,9 +152,11 @@ final class ZoneGenerator {
             SearchState state = active.get(idx);
             boolean isUnlimited = state.def.count == Integer.MAX_VALUE;
 
-            // density < 1: this whole ring is skipped. A skipped ring deliberately does NOT count
-            // toward emptyRingStreak, otherwise a very rare zone would "saturate" its search
-            // without ever having tried a single point.
+            /*
+                density < 1: this whole ring is skipped. A skipped ring deliberately does NOT count
+                toward emptyRingStreak, otherwise a very rare zone would "saturate" its search
+                without ever having tried a single point.
+             */
             if (!state.ringIsAttempted()) {
                 state.advanceRing();
                 if (state.ringRadius > MAX_WORLD_COORDINATE) {
@@ -158,8 +166,10 @@ final class ZoneGenerator {
                 continue;
             }
 
-            // Per-try density roll. A blocked try still counts toward the ring, so ring
-            // advancement and the empty-ring streak behave exactly as they would otherwise.
+            /*
+                Per-try density roll. A blocked try still counts toward the ring, so ring
+                advancement and the empty-ring streak behave exactly as they would otherwise.
+             */
             boolean success = false;
             if (state.tryIsAllowed()) {
                 int[] candidate = state.nextCandidatePoint(random);
@@ -184,8 +194,10 @@ final class ZoneGenerator {
             }
 
             if (isUnlimited) {
-                // Skipped rings don't reach here, so this counts only rings that were actually
-                // tried.
+                /*
+                    Skipped rings don't reach here, so this counts only rings that were actually
+                    tried.
+                 */
                 state.emptyRingStreak = state.ringHadPlacement ? 0 : state.emptyRingStreak + 1;
                 if (state.emptyRingStreak >= EMPTY_RING_STREAK_LIMIT) {
                     logSearchResult(state, true);
@@ -284,8 +296,10 @@ final class ZoneGenerator {
                 .filter(zi -> zi.zoneType.equals(def.parentZone))
                 .toList();
 
-        // An ancestor's flatten Y / forced biome already covers this child's whole circle; a value of
-        // the child's own would only fight it inside the smaller circle.
+        /*
+            An ancestor's flatten Y / forced biome already covers this child's whole circle. A value of
+            the child's own would only fight it inside the smaller circle.
+         */
         boolean flatten = def.shouldFlattenTerrain.isEnabled()
                 && !ancestorHas(def, d -> d.shouldFlattenTerrain.isEnabled());
         boolean forceBiome = forcesBiome.test(def) && !ancestorHas(def, forcesBiome);
@@ -300,7 +314,7 @@ final class ZoneGenerator {
         for (ZoneInstance parent : parents) {
             int radius = def.radius;
             if (radius > parent.radius) {
-                ModLogger.warn("Zone '{}': radius {} exceeds parent zone '{}' radius {}; clamping.",
+                ModLogger.warn("Zone '{}': radius {} exceeds parent zone '{}' radius {}, clamping.",
                         def.id, radius, parent.zoneType, parent.radius);
                 radius = parent.radius;
             }
@@ -364,7 +378,7 @@ final class ZoneGenerator {
         for (ZoneDefinition def : defs) {
             if (def.ensureBiomeForTheWholeZone && def.ensureBiomeId != null
                     && !biomes.containsKey(def.ensureBiomeId)) {
-                ModLogger.warn("Zone '{}': ensureBiomeForTheWholeZone biome '{}' does not exist; option ignored.",
+                ModLogger.warn("Zone '{}': ensureBiomeForTheWholeZone biome '{}' does not exist, option ignored.",
                         def.id, def.ensureBiomeId);
                 invalid.add(def.id);
             }
@@ -373,7 +387,7 @@ final class ZoneGenerator {
         return def -> def.ensureBiomeForTheWholeZone && !invalid.contains(def.id);
     }
 
-    /** Walks the parentZone chain (cycle-safe); true if any ancestor matches. */
+    /** Walks the parentZone chain (cycle-safe). True if any ancestor matches. */
     private static boolean ancestorHas(ZoneDefinition def, Predicate<ZoneDefinition> flag) {
         Set<String> seen = new HashSet<>();
         String parentId = def.parentZone;
@@ -398,8 +412,10 @@ final class ZoneGenerator {
 
     private static boolean biomeMatches(BiomeSource biomeSource, RandomState randomState, int blockX, int blockZ,
                                         List<BiomeMatcher> allowedBiomes, ServerLevel level) {
-        // Sampled straight from the biome source's noise function — this does
-        // NOT force chunk generation, unlike Level#getBiome.
+        /*
+            Sampled straight from the biome source's noise function — this does
+            NOT force chunk generation, unlike Level#getBiome.
+         */
         int quartY = level.getSeaLevel() >> 2;
         Holder<Biome> biome = biomeSource.getNoiseBiome(blockX >> 2, quartY, blockZ >> 2, randomState.sampler());
         for (BiomeMatcher matcher : allowedBiomes) {

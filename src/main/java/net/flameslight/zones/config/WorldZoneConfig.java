@@ -68,7 +68,7 @@ public final class WorldZoneConfig {
     // ---- Lifecycle ----
 
     /**
-     * Idempotent per server session. Must run before ZoneManager.loadOrGenerate for any dimension;
+     * Idempotent per server session. Must run before ZoneManager.loadOrGenerate for any dimension,
      * returns whether this mod may do anything at all in this world.
      */
     public static synchronized boolean loadOrCreate(ServerLevel level) {
@@ -92,18 +92,22 @@ public final class WorldZoneConfig {
                         snapshot.definitions().size());
                 return true;
             }
-            // The file exists but is unreadable, so the world IS ours; its zone instances still
-            // reference definition ids by name and would be meaningless without any definitions.
-            // Re-freezing from the live config keeps them working, but is not guaranteed to match
-            // what this world was originally created with.
-            ModLogger.warn("This world's saved zones configuration is unreadable; re-saving from the "
+            /*
+                The file exists but is unreadable, so the world IS ours. Its zone instances still
+                reference definition ids by name and would be meaningless without any definitions.
+                Re-freezing from the live config keeps them working, but is not guaranteed to match
+                what this world was originally created with.
+             */
+            ModLogger.warn("This world's saved zones configuration is unreadable. Re-saving from the "
                     + "current config. Existing zone instances keep their positions, but their structure "
                     + "rules now come from whatever config/zones/ holds right now.");
             return freeze(file);
         }
 
-        // No saved config. isInitialized() is false ONLY while a world is being created, so this
-        // separates "brand-new world" from "world that existed before the mod was installed".
+        /*
+            No saved config. isInitialized() is false ONLY while a world is being created, so this
+            separates "brand-new world" from "world that existed before the mod was installed".
+         */
         if (((ServerLevelData) level.getLevelData()).isInitialized()) {
             ModLogger.info("This world was created without the zones mod installed. it is left completely "
                     + "untouched, and no zones will ever generate in it.");
@@ -145,12 +149,12 @@ public final class WorldZoneConfig {
         return ACTIVE.spawnWhitelist();
     }
 
-    /** Parsed (not registry-checked) zoneOnlyBiomes ids; resolved per dimension at level load. */
+    /** Parsed (not registry-checked) zoneOnlyBiomes ids, resolved per dimension at level load. */
     public static List<ResourceLocation> getZoneOnlyBiomes() {
         return ACTIVE.zoneOnlyBiomes();
     }
 
-    /** Resolved zoneOnlyMobs entity types; a few entries, compared by identity. Never modify. */
+    /** Resolved zoneOnlyMobs entity types: a few entries, compared by identity. Never modify. */
     public static EntityType<?>[] getZoneOnlyMobs() {
         return ACTIVE.zoneOnlyMobs();
     }
@@ -225,9 +229,11 @@ public final class WorldZoneConfig {
             defs.add(def);
         }
 
-        // Pass 1: child zones inherit their TOP-LEVEL zone's 'biomes' (a child is always centered
-        // on its parent, so a list of its own could never affect placement, it only drives biome
-        // widening), and collect which ids are named as a parent.
+        /*
+            Pass 1: child zones inherit their TOP-LEVEL zone's 'biomes' (a child is always centered
+            on its parent, so a list of its own could never affect placement, it only drives biome
+            widening), and collect which ids are named as a parent.
+         */
         Set<String> parentIds = new HashSet<>();
         for (ZoneDefinition def : defs) {
             if (def.parentZone == null || def.parentZone.isEmpty()) {
@@ -239,21 +245,25 @@ public final class WorldZoneConfig {
             }
         }
 
-        // Pass 2: everything that needs pass 1's parentIds. Definitions are immutable per snapshot,
-        // so these derived flags are computed once here.
+        /*
+            Pass 2: everything that needs pass 1's parentIds. Definitions are immutable per snapshot,
+            so these derived flags are computed once here.
+         */
         for (ZoneDefinition def : defs) {
             def.hasChildZones = parentIds.contains(def.id);
             for (ZoneDefinition.StructureEntry entry : def.structures) {
                 if (entry == null) {
                     continue;
                 }
-                // Interned so findStructure's equals() hits the identity fast path against the
-                // interned ids ZoneManager.idString hands out on the placement hot path.
+                /*
+                    Interned so findStructure's equals() hits the identity fast path against the
+                    interned ids ZoneManager.idString hands out on the placement hot path.
+                 */
                 if (entry.id != null) {
                     entry.id = entry.id.intern();
                 }
                 if (entry.spaceAround > 0) {
-                    topLevelOf(def, byId).treeHasSpaceAround = true;
+                    topLevelOf(def, byId).usesSpaceAroundInAnyNestedZones = true;
                 }
                 if (entry.blockLeakingIntoNestedZones && !def.hasChildZones) {
                     ModLogger.debug("Zone '{}': blockLeakingIntoNestedZones on '{}', ignored! no zone "
@@ -262,8 +272,10 @@ public final class WorldZoneConfig {
             }
         }
 
-        // Pass 3: mobs. Entity types are a built-in registry, so everything resolves right here,
-        // once, before any chunk or spawn needs it.
+        /*
+            Pass 3: mobs. Entity types are a built-in registry, so everything resolves right here,
+            once, before any chunk or spawn needs it.
+         */
         Map<String, List<MobSpawnSettings.SpawnerData>> ownSpawns = new HashMap<>();
         for (ZoneDefinition def : defs) {
             ownSpawns.put(def.id, resolveMobs(def));
@@ -292,8 +304,10 @@ public final class WorldZoneConfig {
             for (MobSpawnSettings.SpawnerData data : effective) {
                 List<MobSpawnSettings.SpawnerData> list =
                         byCategory.computeIfAbsent(data.type.getCategory(), c -> new ArrayList<>());
-                // weight 0: the mob is still "replaced" (its biome entry removed) inside the zone,
-                // but nothing is added back, so it can't spawn there at all.
+                /*
+                    weight 0: the mob is still "replaced" (its biome entry removed) inside the zone,
+                    but nothing is added back, so it can't spawn there at all.
+                 */
                 if (data.getWeight().asInt() > 0) {
                     list.add(data);
                 }
@@ -326,7 +340,7 @@ public final class WorldZoneConfig {
     }
 
     /**
-     * A zone's OWN 'mobs' as spawn entries; unknown and never-naturally-spawning mobs are dropped.
+     * A zone's OWN 'mobs' as spawn entries. Unknown and never-naturally-spawning mobs are dropped.
      * A mob listed more than once in the zone's own list keeps only its LAST entry (warned). An
      * obeyParent child overriding a parent's entry is not a duplicate: that merge happens later.
      */
@@ -335,11 +349,11 @@ public final class WorldZoneConfig {
         for (ZoneDefinition.MobEntry entry : def.mobs) {
             EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(entry.id).orElse(null);
             if (type == null) {
-                ModLogger.warn("Zone '{}': 'mobs' entry '{}' is not a known mob; ignored.", def.id, entry.id);
+                ModLogger.warn("Zone '{}': 'mobs' entry '{}' is not a known mob, ignored.", def.id, entry.id);
                 continue;
             }
             if (type.getCategory() == MobCategory.MISC) {
-                ModLogger.warn("Zone '{}': 'mobs' entry '{}' never spawns naturally (misc category); ignored.",
+                ModLogger.warn("Zone '{}': 'mobs' entry '{}' never spawns naturally (misc category), ignored.",
                         def.id, entry.id);
                 continue;
             }
@@ -361,7 +375,7 @@ public final class WorldZoneConfig {
         for (ResourceLocation id : parseIds(ids, "zoneOnlyMobs")) {
             EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getOptional(id).orElse(null);
             if (type == null) {
-                ModLogger.warn("zoneOnlyMobs: '{}' is not a known mob; ignored.", id);
+                ModLogger.warn("zoneOnlyMobs: '{}' is not a known mob, ignored.", id);
             } else {
                 types.add(type);
             }
@@ -377,7 +391,7 @@ public final class WorldZoneConfig {
         for (String raw : ids) {
             ResourceLocation id = raw == null ? null : ResourceLocation.tryParse(raw.trim());
             if (id == null) {
-                ModLogger.warn("{}: '{}' is not a valid id; ignored.", option, raw);
+                ModLogger.warn("{}: '{}' is not a valid id, ignored.", option, raw);
             } else {
                 result.add(id);
             }
@@ -385,7 +399,7 @@ public final class WorldZoneConfig {
         return List.copyOf(result);
     }
 
-    /** Walks the parentZone chain to the top-level zone (cycle-safe; stops at a missing parent). */
+    /** Walks the parentZone chain to the top-level zone (cycle-safe, stops at a missing parent). */
     private static ZoneDefinition topLevelOf(ZoneDefinition def, Map<String, ZoneDefinition> byId) {
         ZoneDefinition current = def;
         Set<String> seen = new HashSet<>();
@@ -413,7 +427,7 @@ public final class WorldZoneConfig {
                 return null;
             }
             if (stored.version > FORMAT_VERSION) {
-                ModLogger.warn("{} was written by a newer version of this mod (format {}); reading it anyway.",
+                ModLogger.warn("{} was written by a newer version of this mod (format {}), reading it anyway.",
                         file, stored.version);
             }
             return build(stored);
@@ -430,12 +444,12 @@ public final class WorldZoneConfig {
                 GSON.toJson(stored, writer);
             }
         } catch (IOException e) {
-            ModLogger.error("Could not write this world's saved zones configuration to {}; it will be "
+            ModLogger.error("Could not write this world's saved zones configuration to {}. It will be "
                     + "re-created from the live config on the next load.", file, e);
         }
     }
 
-    /** On-disk shape only: built, written and thrown away; never held while the world runs. */
+    /** On-disk shape only: built, written and thrown away, never held while the world runs. */
     private static final class StoredConfig {
         int version = FORMAT_VERSION;
         int baseZonePlacementTries;

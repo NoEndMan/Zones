@@ -84,7 +84,7 @@ public final class ZoneManager {
 
     /**
      * Cached toString() per structure id. ResourceLocation.toString() allocates and every map
-     * lookup then re-hashes a long string; the registry hands out one instance per structure, so
+     * lookup then re-hashes a long string. The registry hands out one instance per structure, so
      * an identity map turns both into a single reference lookup. Bounded by the structure registry
      * (a few hundred entries), copy-on-write, cleared with the session.
      */
@@ -117,10 +117,12 @@ public final class ZoneManager {
     private static volatile Map<BiomeSource, ResourceLocation> DIMENSION_BY_BIOME_SOURCE = Collections.emptyMap();
     private static volatile Map<RandomState, ResourceLocation> DIMENSION_BY_RANDOM_STATE = Collections.emptyMap();
 
-    // Maps every live StructurePlacement instance to the structure ids its
-    // StructureSet contains — built once per server session so the
-    // isStructureChunk mixin can find "which structures does this shared
-    // placement gate" without any datapack surgery.
+    /*
+        Maps every live StructurePlacement instance to the structure ids its
+        StructureSet contains — built once per server session so the
+        isStructureChunk mixin can find "which structures does this shared
+        placement gate" without any datapack surgery.
+     */
     private static volatile Map<StructurePlacement, List<ResourceLocation>> PLACEMENT_TO_STRUCTURES =
             Collections.emptyMap();
     private static volatile boolean placementIndexBuilt = false;
@@ -177,8 +179,10 @@ public final class ZoneManager {
         private long chunkKey = Long.MIN_VALUE;
         private boolean chunkHasFlatten;
 
-        // Last surface sample handed out by computeSurfaceHeight. The biome source asks for the same
-        // chunk's sample many times in a row, so this skips the shared, locked cache almost always.
+        /*
+            Last surface sample handed out by computeSurfaceHeight. The biome source asks for the same
+            chunk's sample many times in a row, so this skips the shared, locked cache almost always.
+         */
         private ResourceLocation surfaceDim;
         private long surfaceKey = Long.MIN_VALUE;
         private int surfaceValue;
@@ -251,7 +255,7 @@ public final class ZoneManager {
                     .getHolder(ResourceKey.create(Registries.BIOME, zoneInstance.forcedBiome))
                     .orElse(null);
             if (zoneInstance.forcedBiomeHolder == null) {
-                ModLogger.warn("Zone '{}' at [{}, {}] forces biome '{}', which no longer exists; not forcing it.",
+                ModLogger.warn("Zone '{}' at [{}, {}] forces biome '{}', which no longer exists, not forcing it.",
                         zoneInstance.zoneType, zoneInstance.centerX, zoneInstance.centerZ, zoneInstance.forcedBiome);
             }
         }
@@ -404,7 +408,7 @@ public final class ZoneManager {
                 ResourceLocation id = ResourceLocation.tryParse(entry.id);
                 if (id == null || !structureRegistry.containsKey(id)) {
                     ModLogger.warn("Zone '{}' references unknown structure '{}'. Check if the id is correct "
-                                    + "and that any mod providing it is installed; this structure will never generate.",
+                                    + "and that any mod providing it is installed. This structure will never generate.",
                             def.id, entry.id);
                 }
             }
@@ -492,8 +496,13 @@ public final class ZoneManager {
                     anyGuarantee = true;
                 }
             }
+            /*
+                A top-level zone holds the spaceAround records of its whole hierarchy, so it must retire,
+                and free them, even when its own entries need nothing.
+             */
+            defReclaimable = defReclaimable || def.usesSpaceAroundInAnyNestedZones;
             def.hasReclaimableData = defReclaimable;
-            anyReclaimable |= defReclaimable;
+            anyReclaimable = anyReclaimable || defReclaimable;
         }
 
         ZONE_RESTRICTED_STRUCTURES = WorldZoneConfig.getZoneOnlyStructures();
@@ -561,8 +570,10 @@ public final class ZoneManager {
             return false;
         }
 
-        // obeyParent: the child sees its own 'structures' list first; only if it has no entry
-        // of its own for this id AND obeyParent is on does it fall back to the parent's entry.
+        /*
+            obeyParent: the child sees its own 'structures' list first. Only if it has no entry
+            of its own for this id AND obeyParent is on does it fall back to the parent's entry.
+         */
         ZoneDefinition.StructureEntry entry = resolveEntry(def, structureIdStr);
 
         if (entry == null) {
@@ -604,8 +615,10 @@ public final class ZoneManager {
 
         String idStr = idString(structureId);
 
-        // maxCount / guaranteePlacement read this back (resolved through obeyParent). Nothing reads
-        // it once the zone has retired.
+        /*
+            maxCount / guaranteePlacement read this back (resolved through obeyParent). Nothing reads
+            it once the zone has retired.
+         */
         boolean countChanged = false;
         synchronized (zoneInstance) {
             if (!zoneInstance.spaceAroundRetired && needsPlacementCount(zoneInstance, idStr)) {
@@ -687,7 +700,7 @@ public final class ZoneManager {
             } else {
                 int failed = zoneInstance.initGuaranteeAttempts().merge(idStr, 1, Integer::sum);
                 if (failed >= GUARANTEE_MAX_ATTEMPTS) {
-                    ModLogger.warn("guaranteePlacement: could not place '{}' in zone '{}' after {} attempts; "
+                    ModLogger.warn("guaranteePlacement: could not place '{}' in zone '{}' after {} attempts. "
                             + "aborting.", idStr, zoneInstance.zoneType, GUARANTEE_MAX_ATTEMPTS);
                 }
             }
@@ -720,8 +733,10 @@ public final class ZoneManager {
             }
         }
 
-        // The biome forced over this spot (own or an ancestor's) is what the structure's biome check
-        // actually samples here, so it counts as allowed for every structure the zone registers.
+        /*
+            The biome forced over this spot (own or an ancestor's) is what the structure's biome check
+            actually samples here, so it counts as allowed for every structure the zone registers.
+         */
         if (!hasAnyForcedBiomeZone) {
             return false;
         }
@@ -793,8 +808,10 @@ public final class ZoneManager {
     private static Integer resolveSurfaceY(ResourceLocation dimension, int blockX, int blockZ) {
         int flattenY = getFlattenTargetYCached(dimension, blockX, blockZ);
         if (flattenY != Integer.MIN_VALUE) {
-            // +1 to match getBaseHeight's own convention: the first air block ABOVE the surface,
-            // which is exactly what the flatten override in NoiseBasedChunkGeneratorMixin returns.
+            /*
+                +1 to match getBaseHeight's own convention: the first air block ABOVE the surface,
+                which is exactly what the flatten override in NoiseBasedChunkGeneratorMixin returns.
+             */
             return flattenY + 1;
         }
         return computeSurfaceHeight(dimension, blockX, blockZ);
@@ -805,9 +822,11 @@ public final class ZoneManager {
         if (level == null) {
             return null;
         }
-        // getBaseHeight walks a whole noise column, and the biome source asks per quart cell --
-        // 16 real samples per chunk. Surface height inside a zone varies slowly, so one sample at
-        // the chunk centre stands in for the chunk.
+        /*
+            getBaseHeight walks a whole noise column, and the biome source asks per quart cell --
+            16 real samples per chunk. Surface height inside a zone varies slowly, so one sample at
+            the chunk centre stands in for the chunk.
+         */
         int sampleX = (blockX & SURFACE_SAMPLE_MASK) + 8;
         int sampleZ = (blockZ & SURFACE_SAMPLE_MASK) + 8;
         long key = (((long) sampleX) << 32) ^ (sampleZ & 0xffffffffL);
@@ -1149,7 +1168,7 @@ public final class ZoneManager {
 
     /**
      * flattenY for the preliminary surface (FlattenedPreliminarySurfaceFunction). A column inside a
-     * flatten zone always uses that zone's own Y; otherwise the smallest flatten zone within
+     * flatten zone always uses that zone's own Y. Otherwise the smallest flatten zone within
      * PRELIMINARY_SURFACE_MARGIN of its edge. Integer.MIN_VALUE when none applies.
      */
     public static int getPreliminarySurfaceFlattenY(ResourceLocation dimension, int blockX, int blockZ) {
@@ -1193,8 +1212,10 @@ public final class ZoneManager {
     private static void indexZones(ResourceLocation dim, List<ZoneInstance> zones) {
         ZoneIndex index = new ZoneIndex();
         for (ZoneInstance zoneInstance : zones) {
-            // Flatten zones reach PRELIMINARY_SURFACE_MARGIN past their radius (getPreliminarySurfaceFlattenY),
-            // so they must be findable from every cell that margin touches. contains() still tests the exact radius.
+            /*
+                Flatten zones reach PRELIMINARY_SURFACE_MARGIN past their radius (getPreliminarySurfaceFlattenY),
+                so they must be findable from every cell that margin touches. contains() still tests the exact radius.
+             */
             int reach = zoneInstance.radius + (zoneInstance.flattenY != null ? PRELIMINARY_SURFACE_MARGIN : 0);
             int minCx = Math.floorDiv(zoneInstance.centerX - reach, ZONE_GRID);
             int maxCx = Math.floorDiv(zoneInstance.centerX + reach, ZONE_GRID);
@@ -1438,7 +1459,7 @@ public final class ZoneManager {
 
     /**
      * Serializes every dirty dimension's zone list. Zone instances are mutated under their own
-     * monitors now, so a list can be read here while a worker updates one instance's counters; the
+     * monitors now, so a list can be read here while a worker updates one instance's counters. The
      * maps involved are concurrent, and anything missed is written by the next flush.
      */
     public static synchronized Map<Path, String> snapshotDirtyZones() {
